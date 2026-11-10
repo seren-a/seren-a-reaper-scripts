@@ -5,8 +5,8 @@ Diese Datei liefert neuen AI-Sessions (Agent im VS Code o. Ä.) den nötigen Pro
 ## Projekt
 
 - Repo: `seren-a/seren-a-reaper-scripts` (privat)
-- Struktur: pro Script ein Ordner mit Script-Datei + eigener README
-- Aktuelles Script: `fx_plugin_preset_browser/fx_plugin_preset_browser.lua`
+- Struktur: Sammlungs-Repo – pro Tool ein Ordner unter `tools/` mit Script-Datei + eigener README, kleine Einzelskripte in `scripts/`
+- Aktuelles Tool: `tools/fx_plugin_preset_browser/fx_plugin_preset_browser.lua`
 
 ## Arbeitsweise (bitte beibehalten)
 
