@@ -1,10 +1,10 @@
--- dearvr_preset_browser.lua
+-- fx_plugin_preset_browser.lua
 -- ReaScript (Lua) + ReaImGui
 -- 3 Fenster: Browser / Overview / Settings
 -- Benoetigt REAPER 6.75+
 
 local r = reaper
-local EXT_SECTION = "dearVR_preset_browser"
+local EXT_SECTION = "fx_plugin_preset_browser"
 
 ----------------------------------------------------------------
 -- Settings (persistent via ExtState)
@@ -600,6 +600,6 @@ local function frame()
 end
 
 r.defer(function()
-  ctx = r.ImGui_CreateContext("dearVR Preset Browser")
+  ctx = r.ImGui_CreateContext("FX Preset Browser")
   r.defer(frame)
 end)
