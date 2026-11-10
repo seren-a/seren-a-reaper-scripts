@@ -1,6 +1,6 @@
-# dearVR Preset Browser
+# FX Plugin Preset Browser
 
-ReaScript (Lua) für REAPER mit [ReaImGui](https://github.com/cfillion/reaimgui) – Preset- und Parameter-Kontrolle für dearVR-Plugins (und beliebige andere FX per Filter), ohne die FX-Fenster öffnen zu müssen.
+ReaScript (Lua) für REAPER mit [ReaImGui](https://github.com/cfillion/reaimgui) – Preset- und Parameter-Kontrolle für beliebige FX-Plugins, ohne die FX-Fenster öffnen zu müssen. Standardmäßig auf dearVR-Plugins voreingestellt (per Filter frei konfigurierbar).
 
 ## Voraussetzungen
 
@@ -8,7 +8,7 @@ ReaScript (Lua) für REAPER mit [ReaImGui](https://github.com/cfillion/reaimgui)
 
 ## Installation
 
-1. Datei `dearvr_preset_browser.lua` in den REAPER-Script-Ordner legen (Options → Show REAPER resource path → `Scripts/`)
+1. Datei `fx_plugin_preset_browser.lua` in den REAPER-Script-Ordner legen (Options → Show REAPER resource path → `Scripts/`)
 2. In REAPER: Actions → Show action list → **Load ReaScript** → Datei auswählen
 3. Optional: Tastenkürzel oder Toolbar-Button zuweisen (Action list → Add shortcut / Customize toolbar)
 
@@ -39,5 +39,5 @@ ReaScript (Lua) für REAPER mit [ReaImGui](https://github.com/cfillion/reaimgui)
 
 ## Einstellungen zurücksetzen
 
-Global: Abschnitt `[dearVR_preset_browser]` aus `reaper-extstate.ini` löschen (REAPER vorher schließen).
+Global: Abschnitt `[fx_plugin_preset_browser]` aus `reaper-extstate.ini` löschen (REAPER vorher schließen).
 Projekt: Im Projekt auf „Global“ speichern und die Projekt-ExtState-Daten entfernen.
