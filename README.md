@@ -11,6 +11,7 @@ Projekt-Kontext für AI-Sessions: [docs/AI-KONTEXT.md](docs/AI-KONTEXT.md).
 | Tool | Was es tut |
 | --- | --- |
 | [fx_plugin_preset_browser](tools/fx_plugin_preset_browser/) | ReaScript (Lua) + ReaImGui: Preset- und Parameter-Kontrolle für beliebige FX-Plugins, ohne die FX-Fenster öffnen zu müssen – mit Overview über alle Tracks und Settings (FX-Filter, Preset-Regeln, Themes). |
+| [track_fx_helpers](tools/track_fx_helpers/) | Drei kleine ReaScripts: Spuren mit Plugin „x“ auswählen bzw. abwählen und ein fokussiertes FX samt Einstellungen auf alle ausgewählten Spuren kopieren. |
 
 ## Branches (seren.a 3D)
 
