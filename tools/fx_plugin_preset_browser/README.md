@@ -15,9 +15,9 @@ ReaScript (Lua) für REAPER mit [ReaImGui](https://github.com/cfillion/reaimgui)
 ## Fenster
 
 ### FX Preset & Parameter Browser
-- Folgt automatisch dem fokussierten FX (abschaltbar)
-- Preset-Dropdown (gefiltert nach Ausschlüssen/Regeln) und alle Parameter als Slider/Checkboxen/Stufen-Dropdowns
-- Parameter-Suchfilter
+- Folgt automatisch dem fokussierten FX (abschaltbar; das zuletzt gültige FX bleibt sichtbar, wenn das Script-Fenster fokussiert ist)
+- Preset-Dropdown (gefiltert nach Ausschlüssen/Regeln)
+- Parameter (Slider/Checkboxen/Stufen-Dropdowns + Suchfilter) erst per Toggle **„Parameter anzeigen“** oben einblendbar (Default: aus, persistiert)
 
 ### Preset Overview
 - Alle Tracks mit FX, die dem Filter entsprechen, untereinander
@@ -28,7 +28,8 @@ ReaScript (Lua) für REAPER mit [ReaImGui](https://github.com/cfillion/reaimgui)
 - **FX-Filter:** Komma-getrennte Substrings (Default: `dearVR`), z. B. `dearVR, Reverb`
 - **Theme:** `girly`, `dark`, `light`
 - **Speichern in:** Global (`reaper-extstate.ini`) oder Projekt (Projekt-ExtState; ohne eigene Projektdaten gelten die globalen)
-- **Presets ausschließen:** pro Plugin (z. B. bei „dearVR Pro 2“ einzelne Presets ausblenden)
+- **Presets ausschließen:** pro Plugin (z. B. bei „dearVR Pro 2“ einzelne Presets ausblenden) – Klick toggelt, **Drag über die Liste** malt den Zustand auf alle berührten Presets; die volle Liste bleibt sichtbar, Ausgeschlossenes ist also re-aktivierbar
+- **Sortierung der Presetliste:** wie gehabt (Preset-Reihenfolge), A-Z, Z-A, neueste zuerst (zuletzt verwendete Presets; wird beim Auswählen in einem Dropdown getrackt)
 - **Track-Regeln:** Erste Regel, deren Pattern im Tracknamen vorkommt, gewinnt. Erlaubte Presets als Komma-Liste, leer = alle.
 
 ## Bekannte Grenzen

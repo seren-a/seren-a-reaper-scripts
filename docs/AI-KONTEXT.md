@@ -20,19 +20,23 @@ Diese Datei liefert neuen AI-Sessions (Agent im VS Code o. Ä.) den nötigen Pro
 
 ReaScript (Lua) + ReaImGui für REAPER 6.75+. Drei Fenster:
 
-- **Browser:** folgt fokussiertem FX (abschaltbar), Parameter als Slider/Checkboxen/Stufen-Combos, Preset-Dropdown, Parameter-Suchfilter
+- **Browser:** folgt fokussiertem FX (abschaltbar, letzte gültige Wahl bleibt bei Fokusverlust sichtbar), Preset-Dropdown, Parameter erst per Toggle „Parameter anzeigen“ (Default aus, ExtState `show_params`)
 - **Overview:** alle Tracks mit FX, die dem FX-Filter entsprechen, mit Preset-Dropdowns pro Instanz
-- **Settings:** FX-Filter (Komma-Substrings, Default `dearVR`), Preset-Ausschlüsse pro Plugin, Track-Regeln (erste Match gewinnt, erlaubte Presets als Komma-Liste, leer = alle), Themes (girly/dark/light), Speicherung Global (ExtState) oder Projekt (Projekt-ExtState mit Fallback)
+- **Settings:** FX-Filter (Komma-Substrings, Default `dearVR`), Preset-Ausschlüsse pro Plugin (Klick toggelt, Drag malt über die Liste), Sortierung der Presetliste (wie gehabt/A-Z/Z-A/neueste zuerst), Track-Regeln (erste Match gewinnt, erlaubte Presets als Komma-Liste, leer = alle), Themes (girly/dark/light), Speicherung Global (ExtState) oder Projekt (Projekt-ExtState mit Fallback)
 
-Einstellungen werden serialisiert als Zeilen (`FILTER:` / `EXCL:` / `RULE:`) in der ExtState-Sektion `fx_plugin_preset_browser` bzw. im Projekt-ExtState.
+Einstellungen werden serialisiert als Zeilen (`FILTER:` / `SORT:` / `EXCL:` / `RULE:` / `USED:`) in der ExtState-Sektion `fx_plugin_preset_browser` bzw. im Projekt-ExtState.
 
 ## Technische Fallstricke (bereits gelöst – nicht rückgängig machen)
 
 - `ImGui_SetNextWindowSize` heißt die Funktion (nicht `SetNextSize`)
 - Farbkonstanten version-unabhängig auflösen: `r["ImGui_Col_X"]`, falls Funktion dann einmalig aufrufen (`ResolveTheme()`)
 - Push/Pop von StyleColors muss pro Frame exakt ausbalanciert sein (`pushed_colors`-Zähler)
-- Presetnamen werden durch Durchschalten ermittelt (`GetPresetNames`, gecacht)
+- Presetnamen werden durch Durchschalten ermittelt (`GetPresetNames`, gecacht, als ein Undo-Block mit Wiederherstellung des Ausgangspresets)
 - Projekt-ExtState mit Fallback: `SetProjExtState`/`GetProjExtState` (älter) oder `GetSetProjectExtState` (neuer)
+- **Rückgabewerte nie blind nehmen:** `GetProjExtState` liefert `(integer retval, string value)`, `TrackFX_GetPresetIndex` liefert `(curidx, numberOfPresets)` (2 Werte!), `GetFocusedFX` liefert `(retval, tracknumber, itemnumber, fxnumber)` (FX-Index ist der 4. Wert). String-Rückgabe per `PickStr()` herauspicken.
+- Preset-Setter heißt `TrackFX_SetPresetByIndex` (`TrackFX_SetPresetIndex` existiert **nicht**)
+- ImGui-Farben sind `0xAABBGGRR` (nicht CSS `#RRGGBB` – sonst landet Pink als Salmon)
+- Drag-Painting in Listen: `ImGui_IsItemHovered` + `ImGui_IsMouseDown` pro Selectable, Zielwert beim ersten Hover merken
 
 ## Offene Issues (Roadmap, aufsteigende Schwierigkeit)
 
