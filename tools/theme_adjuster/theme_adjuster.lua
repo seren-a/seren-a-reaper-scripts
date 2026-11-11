@@ -433,14 +433,17 @@ local function list_theme_files()
   S.theme_files = {}
   local sep = r.GetOS():match("^Win") and "\\" or "/"
   local dir = r.GetResourcePath() .. sep .. "ColorThemes"
+  -- EnumerateFiles liefert am Ende nil (je nach Version auch "") –
+  -- beides muss abgefangen werden, sonst crasht der Index-Zugriff
   local i = 0
-  repeat
+  while true do
     local file = r.EnumerateFiles(dir, i)
-    if file ~= "" and file:match("%.ReaperTheme$") then
+    if not file or file == "" then break end
+    if file:match("%.ReaperTheme$") then
       S.theme_files[#S.theme_files + 1] = { name = file, path = dir .. "/" .. file }
     end
     i = i + 1
-  until file == ""
+  end
   table.sort(S.theme_files, function(a, b) return a.name:lower() < b.name:lower() end)
 end
 
