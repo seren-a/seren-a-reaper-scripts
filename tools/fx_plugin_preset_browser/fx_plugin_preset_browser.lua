@@ -113,6 +113,7 @@ local selected_fx_idx    = 0
 local param_filter    = ""
 local preset_cache    = {}
 local excl_sel_fxname = ""
+local show_params     = r.GetExtState(EXT_SECTION, "show_params") == "1"
 ----------------------------------------------------------------
 -- Themes
 ----------------------------------------------------------------
@@ -354,6 +355,13 @@ local function DrawBrowser(track, fx)
   r.ImGui_SameLine(ctx)
   DrawPresetCombo(track, fx, "##preset")
   r.ImGui_Separator(ctx)
+
+  -- Parameter erst auf expliziten Wunsch anzeigen (Presets laden sonst
+  -- mitten im Rendern die Parameter um)
+  if not show_params then
+    r.ImGui_TextDisabled(ctx, "Parameter ausgeblendet - 'Parameter anzeigen' aktivieren.")
+    return
+  end
 
   local nparams = r.TrackFX_GetNumParams(track, fx)
   local changed, buf = r.ImGui_InputTextWithHint(ctx, "##filter", "Parameter filtern...", param_filter)
@@ -600,6 +608,13 @@ local function frame()
     if vis then
       local _, fol = r.ImGui_Checkbox(ctx, "Fokussiertem FX folgen", follow_focused and 1 or 0)
       follow_focused = fol == 1
+      r.ImGui_SameLine(ctx)
+      local sp_now = show_params and 1 or 0
+      local _, sp = r.ImGui_Checkbox(ctx, "Parameter anzeigen", sp_now)
+      if sp ~= sp_now then
+        show_params = sp == 1
+        r.SetExtState(EXT_SECTION, "show_params", show_params and "1" or "0", true)
+      end
       r.ImGui_SameLine(ctx)
       if r.ImGui_Button(ctx, "Settings") then
         show_settings = not show_settings
