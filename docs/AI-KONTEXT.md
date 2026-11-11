@@ -35,7 +35,7 @@ Einstellungen werden serialisiert als Zeilen (`FILTER:` / `SORT:` / `EXCL:` / `R
 - Projekt-ExtState mit Fallback: `SetProjExtState`/`GetProjExtState` (älter) oder `GetSetProjectExtState` (neuer)
 - **Rückgabewerte nie blind nehmen:** `GetProjExtState` liefert `(integer retval, string value)`, `TrackFX_GetPresetIndex` liefert `(curidx, numberOfPresets)` (2 Werte!), `GetFocusedFX` liefert `(retval, tracknumber, itemnumber, fxnumber)` (FX-Index ist der 4. Wert). String-Rückgabe per `PickStr()` herauspicken.
 - Preset-Setter heißt `TrackFX_SetPresetByIndex` (`TrackFX_SetPresetIndex` existiert **nicht**)
-- ImGui-Farben sind `0xAABBGGRR` (nicht CSS `#RRGGBB` – sonst landet Pink als Salmon)
+- ImGui-Farben in ReaImGui-Lua sind `0xRRGGBBAA` – **Alpha ist das letzte Byte** (Doku: „Color is in 0xRRGGBBAA“). Alpha `FF` = deckend; bei `0xAABBGGRR` werden die Fenster durchsichtig und Farben vertauscht
 - Drag-Painting in Listen: `ImGui_IsItemHovered` + `ImGui_IsMouseDown` pro Selectable, Zielwert beim ersten Hover merken
 
 ## Offene Issues (Roadmap, aufsteigende Schwierigkeit)
