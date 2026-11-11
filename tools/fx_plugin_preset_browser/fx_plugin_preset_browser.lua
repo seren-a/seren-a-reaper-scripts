@@ -13,6 +13,8 @@ local settings = {
   fx_filters = "dearVR",
   excluded   = {},
   rules      = {},
+  sort_mode  = "default",  -- default | az | za | newest
+  last_used  = {},         -- "fxname<TAB>presetname" -> os.time()
 }
 
 local settings_scope = r.GetExtState(EXT_SECTION, "scope")
@@ -61,6 +63,8 @@ local function LoadSettings(scope)
   settings.fx_filters = "dearVR"
   settings.excluded = {}
   settings.rules = {}
+  settings.sort_mode = "default"
+  settings.last_used = {}
   if type(s) ~= "string" or s == "" then return end
   for line in s:gmatch("([^\n]*)\n?") do
     if line:find("^FILTER:") then
@@ -78,12 +82,18 @@ local function LoadSettings(scope)
       if pat then
         table.insert(settings.rules, { pattern = pat, allowed = allowed or "" })
       end
+    elseif line:find("^SORT:") then
+      local m = line:sub(#"SORT:" + 1)
+      if m == "az" or m == "za" or m == "newest" or m == "default" then settings.sort_mode = m end
+    elseif line:find("^USED:") then
+      local fxn, p, ts = line:sub(#"USED:" + 1):match("^([^\t]*)\t([^\t]*)\t(.*)$")
+      if fxn and p then settings.last_used[fxn .. "\t" .. p] = tonumber(ts) or 0 end
     end
   end
 end
 
 local function SaveSettings(settings_scope)
-  local t = { "FILTER:" .. settings.fx_filters }
+  local t = { "FILTER:" .. settings.fx_filters, "SORT:" .. settings.sort_mode }
   for fxn, presets in pairs(settings.excluded) do
     local lst = {}
     for p in pairs(presets) do table.insert(lst, p) end
@@ -93,6 +103,10 @@ local function SaveSettings(settings_scope)
   end
   for _, rule in ipairs(settings.rules) do
     table.insert(t, "RULE:" .. rule.pattern .. "\t" .. rule.allowed)
+  end
+  for key, ts in pairs(settings.last_used) do
+    local fxn, p = key:match("^([^\t]*)\t(.*)$")
+    if fxn and p then table.insert(t, "USED:" .. fxn .. "\t" .. p .. "\t" .. tostring(ts)) end
   end
   WriteStore(settings_scope, "settings", table.concat(t, "\n"))
 end
@@ -288,6 +302,28 @@ local function AllowedPresets(track, fx, fxname)
   return list, cur
 end
 
+local sort_labels = { default = "wie gehabt", az = "A-Z", za = "Z-A", newest = "neueste zuerst" }
+local sort_order  = { "default", "az", "za", "newest" }
+
+-- sortiert eine Presetliste (In-Place) gemaess settings.sort_mode
+local function SortPresetList(list, fxname)
+  local mode = settings.sort_mode
+  if mode == "az" then
+    table.sort(list, function(a, b) return a.name:lower() < b.name:lower() end)
+  elseif mode == "za" then
+    table.sort(list, function(a, b) return a.name:lower() > b.name:lower() end)
+  elseif mode == "newest" then
+    local lu = settings.last_used
+    table.sort(list, function(a, b)
+      local ta = lu[fxname .. "\t" .. a.name] or 0
+      local tb = lu[fxname .. "\t" .. b.name] or 0
+      if ta ~= tb then return ta > tb end
+      return a.name:lower() < b.name:lower()
+    end)
+  end
+  -- "default" = Reihenfolge wie gehabt (Preset-Index)
+end
+
 local function DrawPresetCombo(track, fx, label)
   local _, fxname = r.TrackFX_GetFXName(track, fx)
   local list, cur = AllowedPresets(track, fx, fxname)
@@ -301,6 +337,8 @@ local function DrawPresetCombo(track, fx, label)
     for i, p in ipairs(list) do
       if r.ImGui_Selectable(ctx, p.name, i == cur) then
         r.TrackFX_SetPresetByIndex(track, fx, p.idx)
+        settings.last_used[fxname .. "\t" .. p.name] = os.time()
+        SaveSettings(settings_scope)
       end
     end
     r.ImGui_EndCombo(ctx)
@@ -501,6 +539,18 @@ local function DrawSettings()
         r.ImGui_EndCombo(ctx)
       end
 
+      r.ImGui_Text(ctx, "Sortierung:")
+      r.ImGui_SameLine(ctx)
+      if r.ImGui_BeginCombo(ctx, "##sort", sort_labels[settings.sort_mode] or settings.sort_mode) then
+        for _, mode in ipairs(sort_order) do
+          if r.ImGui_Selectable(ctx, sort_labels[mode], settings.sort_mode == mode) then
+            settings.sort_mode = mode
+            SaveSettings(settings_scope)
+          end
+        end
+        r.ImGui_EndCombo(ctx)
+      end
+
       local track, fx
       for i = 0, r.GetNumTracks() - 1 do
         local tr = r.GetTrack(0, i)
@@ -526,6 +576,7 @@ local function DrawSettings()
         if list then
           settings.excluded[excl_sel_fxname] = settings.excluded[excl_sel_fxname] or {}
           local excl = settings.excluded[excl_sel_fxname]
+          SortPresetList(list, excl_sel_fxname)
           -- Klick = umschalten; Maus draggen ueber mehrere Eintraege malt
           -- denselben Zustand auf alle beruehrten Presets
           if not r.ImGui_IsMouseDown(ctx, 0) then excl_drag = nil end
