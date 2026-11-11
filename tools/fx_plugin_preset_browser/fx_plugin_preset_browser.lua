@@ -436,7 +436,7 @@ local function DrawOverview()
     r.ImGui_SetNextWindowSize(ctx, 520, 400, r.ImGui_Cond_FirstUseEver())
   end
   local vis, open = r.ImGui_Begin(ctx, "Preset Overview", true)
-  win_collapsed.overview = r.ImGui_IsWindowCollapsed(ctx)
+  win_collapsed.overview = not vis  -- Begin==false heisst eingeklappt/geklippt
   if vis then
     r.ImGui_TextDisabled(ctx, "FX-Filter: " .. settings.fx_filters)
     r.ImGui_Separator(ctx)
@@ -692,7 +692,7 @@ local function frame()
       r.ImGui_SetNextWindowSize(ctx, 420, 500, r.ImGui_Cond_FirstUseEver())
     end
     local vis, open = r.ImGui_Begin(ctx, "FX Preset & Parameter Browser", true)
-    win_collapsed.browser = r.ImGui_IsWindowCollapsed(ctx)
+    win_collapsed.browser = not vis  -- Begin==false heisst eingeklappt/geklippt
     if vis then
       local _, fol = r.ImGui_Checkbox(ctx, "Fokussiertem FX folgen", follow_focused and 1 or 0)
       follow_focused = fol == 1
