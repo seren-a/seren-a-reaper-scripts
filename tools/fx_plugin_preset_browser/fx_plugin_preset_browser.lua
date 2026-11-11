@@ -276,37 +276,6 @@ local function FindRule(trackname)
   return nil
 end
 
-local function AllowedPresets(track, fx, fxname)
-  local names, count = GetPresetNames(track, fx)
-  if not names then return nil, nil end
-
-  local cur_idx = r.TrackFX_GetPresetIndex(track, fx)
-  local _, trackname = r.GetTrackName(track)
-  local rule = FindRule(trackname)
-  local excl = settings.excluded[fxname]
-  local allowed_set = nil
-  if rule and rule.allowed:gsub("%s", "") ~= "" then
-    allowed_set = {}
-    for p in rule.allowed:gmatch("[^,]+") do
-      p = p:gsub("^%s+", ""):gsub("%s+$", "")
-      allowed_set[p] = true
-    end
-  end
-
-  local list, cur = {}, 0
-  for i = 1, count do
-    local nm = names[i]
-    local ok = true
-    if allowed_set and not allowed_set[nm] then ok = false end
-    if excl and excl[nm] then ok = false end
-    if ok then
-      table.insert(list, { name = nm, idx = i - 1 })
-      if i - 1 == cur_idx then cur = #list end
-    end
-  end
-  return list, cur
-end
-
 local sort_labels = { default = "wie gehabt", az = "A-Z", za = "Z-A", newest = "neueste zuerst" }
 local sort_order  = { "default", "az", "za", "newest" }
 
@@ -327,6 +296,43 @@ local function SortPresetList(list, fxname)
     end)
   end
   -- "default" = Reihenfolge wie gehabt (Preset-Index)
+end
+
+local function AllowedPresets(track, fx, fxname)
+  local names, count = GetPresetNames(track, fx)
+  if not names then return nil, nil end
+
+  local cur_idx = r.TrackFX_GetPresetIndex(track, fx)
+  local _, trackname = r.GetTrackName(track)
+  local rule = FindRule(trackname)
+  local excl = settings.excluded[fxname]
+  local allowed_set = nil
+  if rule and rule.allowed:gsub("%s", "") ~= "" then
+    allowed_set = {}
+    for p in rule.allowed:gmatch("[^,]+") do
+      p = p:gsub("^%s+", ""):gsub("%s+$", "")
+      allowed_set[p] = true
+    end
+  end
+
+  local list = {}
+  for i = 1, count do
+    local nm = names[i]
+    local ok = true
+    if allowed_set and not allowed_set[nm] then ok = false end
+    if excl and excl[nm] then ok = false end
+    if ok then
+      table.insert(list, { name = nm, idx = i - 1 })
+    end
+  end
+  -- Sortierung gilt ueberall (Settings-Liste + Dropdowns in Browser/Overview)
+  SortPresetList(list, fxname)
+  -- Position des aktuellen Presets erst NACH dem Sortieren bestimmen
+  local cur = 0
+  for i, p in ipairs(list) do
+    if p.idx == cur_idx then cur = i end
+  end
+  return list, cur
 end
 
 local function DrawPresetCombo(track, fx, label)
