@@ -222,20 +222,26 @@ local function FXMatches(fxname)
 end
 
 local function GetPresetNames(track, fx)
-  local retval, cur_idx, count = r.TrackFX_GetPresetIndex(track, fx)
-  if not retval or not count or count <= 0 then return nil, 0 end
+  -- TrackFX_GetPresetIndex liefert 2 Werte: (curidx, numberOfPresets)
+  local cur_idx, count = r.TrackFX_GetPresetIndex(track, fx)
+  if not count or count <= 0 then return nil, 0 end
   local key = r.GetTrackGUID(track) .. "|" .. fx .. "|" .. count
   if preset_cache[key] then return preset_cache[key].names, count end
 
+  -- Namen durch einmaliges Durchschalten ermitteln (ein Undo-Schritt,
+  -- danach wird das urspruengliche Preset wiederhergestellt)
   local names = {}
+  r.Undo_BeginBlock()
   for i = 0, count - 1 do
-    r.TrackFX_SetPresetIndex(track, fx, i)
+    if not r.TrackFX_SetPresetByIndex(track, fx, i) then break end
     local _, name = r.TrackFX_GetPreset(track, fx)
-    names[i + 1] = name
+    names[i + 1] = name or ""
   end
-  r.TrackFX_SetPresetIndex(track, fx, cur_idx)
+  if cur_idx and cur_idx >= 0 then r.TrackFX_SetPresetByIndex(track, fx, cur_idx) end
+  r.Undo_EndBlock("FX Preset Browser: Presetnamen lesen", -1)
+  if #names == 0 then return nil, 0 end
   preset_cache[key] = { names = names }
-  return names, count
+  return names, #names
 end
 
 local function FindRule(trackname)
@@ -253,7 +259,7 @@ local function AllowedPresets(track, fx, fxname)
   local names, count = GetPresetNames(track, fx)
   if not names then return nil, nil end
 
-  local retval, cur_idx = r.TrackFX_GetPresetIndex(track, fx)
+  local cur_idx = r.TrackFX_GetPresetIndex(track, fx)
   local _, trackname = r.GetTrackName(track)
   local rule = FindRule(trackname)
   local excl = settings.excluded[fxname]
@@ -283,15 +289,16 @@ end
 local function DrawPresetCombo(track, fx, label)
   local _, fxname = r.TrackFX_GetFXName(track, fx)
   local list, cur = AllowedPresets(track, fx, fxname)
+  local _, cur_preset = r.TrackFX_GetPreset(track, fx)
   if not list or #list == 0 then
-    r.ImGui_TextDisabled(ctx, "keine Presets")
+    -- trotzdem den aktuell gewaehlten Presetnamen anzeigen
+    r.ImGui_TextDisabled(ctx, (cur_preset and cur_preset ~= "") and cur_preset or "keine Presets")
     return
   end
-  local _, cur_preset = r.TrackFX_GetPreset(track, fx)
-  if r.ImGui_BeginCombo(ctx, label, cur_preset) then
+  if r.ImGui_BeginCombo(ctx, label, cur_preset or "?") then
     for i, p in ipairs(list) do
       if r.ImGui_Selectable(ctx, p.name, i == cur) then
-        r.TrackFX_SetPresetIndex(track, fx, p.idx)
+        r.TrackFX_SetPresetByIndex(track, fx, p.idx)
       end
     end
     r.ImGui_EndCombo(ctx)
@@ -555,13 +562,26 @@ end
 ----------------------------------------------------------------
 -- Main
 ----------------------------------------------------------------
+-- letztes gueltiges Focus-FX merken, damit die Anzeige nicht "wegspringt",
+-- sobald das Script-Fenster selbst fokussiert ist (GetFocusedFX() == 0)
+local last_focus_track, last_focus_fx = nil, nil
+
 local function GetCurrentFX()
   if follow_focused then
-    local retval, tr, fn = r.GetFocusedFX()
-    if retval == 1 and tr ~= 0 then
-      local track = r.GetTrack(0, tr - 1)
-      if track then return track, fn end
+    -- liefert (retval, tracknumber, itemnumber, fxnumber); aeltere Versionen
+    -- nur (retval, tracknumber, fxnumber) -> fxnumber ist dann nil
+    local retval, tr, a, b = r.GetFocusedFX()
+    local fn = (b ~= nil) and b or a
+    if retval == 1 and tr >= 0 then
+      local track = (tr == 0) and r.GetMasterTrack(0) or r.GetTrack(0, tr - 1)
+      if track and fn >= 0 and fn < r.TrackFX_GetCount(track) then
+        last_focus_track, last_focus_fx = track, fn
+      end
     end
+  end
+  if last_focus_track and r.ValidatePtr(last_focus_track, "MediaTrack*")
+     and last_focus_fx < r.TrackFX_GetCount(last_focus_track) then
+    return last_focus_track, last_focus_fx
   end
   local track = r.GetTrack(0, selected_track_idx)
   if track and selected_fx_idx < r.TrackFX_GetCount(track) then
