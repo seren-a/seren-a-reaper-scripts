@@ -50,7 +50,10 @@ local function resolve_colors()
   }
   for _, n in ipairs(names) do
     local v = r["ImGui_Col_" .. n]
-    if v then COL[n] = v end
+    -- je nach ReaImGui-Version ist die Konstante eine Zahl oder eine
+    -- Funktion, die die Zahl liefert – einmalig auflösen
+    if type(v) == "function" then v = v() end
+    if type(v) == "number" then COL[n] = v end
   end
 end
 resolve_colors()
