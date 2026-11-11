@@ -20,6 +20,10 @@
 
 local r = reaper
 
+-- ctx muss VOR allen Funktionen deklariert sein, die es verwenden,
+-- sonst greifen sie auf das globale (nil) ctx zu
+local ctx
+
 -- =========================================================================
 -- 1. ImGui-Bindings (lazy, version-unabhängig aufgelöst)
 -- =========================================================================
@@ -390,8 +394,6 @@ local S = {
   status       = "",
   window_open  = true,
 }
-
-local ctx
 
 -- =========================================================================
 -- 4. Hilfsfunktionen: Farben & Draw-Modus
