@@ -29,7 +29,7 @@ ReaScript (Lua) für REAPER mit [ReaImGui](https://github.com/cfillion/reaimgui)
 - **Theme:** `girly`, `dark`, `light`
 - **Speichern in:** Global (`reaper-extstate.ini`) oder Projekt (Projekt-ExtState; ohne eigene Projektdaten gelten die globalen)
 - **Presets ausschließen:** pro Plugin (z. B. bei „dearVR Pro 2“ einzelne Presets ausblenden) – Klick toggelt, **Drag über die Liste** malt den Zustand auf alle berührten Presets; die volle Liste bleibt sichtbar, Ausgeschlossenes ist also re-aktivierbar
-- **Sortierung der Presetliste:** wie gehabt (Preset-Reihenfolge), A-Z, Z-A, neueste zuerst (zuletzt verwendete Presets; wird beim Auswählen in einem Dropdown getrackt)
+- **Sortierung der Presetliste:** wie gehabt (Preset-Reihenfolge), A-Z, Z-A, neueste zuerst (zuletzt verwendete Presets; wird beim Auswählen in einem Dropdown getrackt) – gilt für die Settings-Liste **und** alle Preset-Dropdowns in Browser/Overview
 - **Track-Regeln:** Erste Regel, deren Pattern im Tracknamen vorkommt, gewinnt. Erlaubte Presets als Komma-Liste, leer = alle.
 
 ## Bekannte Grenzen
