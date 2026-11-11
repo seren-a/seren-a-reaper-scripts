@@ -13,31 +13,45 @@ local settings = {
   fx_filters = "dearVR",
   excluded   = {},
   rules      = {},
+  sort_mode  = "default",  -- default | az | za | newest
+  last_used  = {},         -- "fxname<TAB>presetname" -> os.time()
 }
 
 local settings_scope = r.GetExtState(EXT_SECTION, "scope")
 if settings_scope ~= "project" then settings_scope = "global" end
 
+-- REAPER-Funktionen liefern mehrere Rueckgabewerte (z. B. integer retval,
+-- string value). Nimm immer den String-Rueckgabewert, egal welche Version.
+local function PickStr(...)
+  for i = 1, select("#", ...) do
+    local v = select(i, ...)
+    if type(v) == "string" then return v end
+  end
+  return ""
+end
+
 local function ReadStore(scope, key)
   if scope == "project" then
     if r.GetSetProjectExtState then
-      local _, v = r.GetSetProjectExtState("", EXT_SECTION, key, "")
-      return v or ""
+      -- 5. Parameter setNewValue=false -> Lesen, liefert retval + value
+      return PickStr(r.GetSetProjectExtState(0, EXT_SECTION, key, "", false))
     end
     if r.GetProjExtState then
-      return r.GetProjExtState("", EXT_SECTION, key) or ""
+      -- liefert integer retval + string value (aeltere Versionen: nur string)
+      return PickStr(r.GetProjExtState(0, EXT_SECTION, key))
     end
     return ""
   end
-  return r.GetExtState(EXT_SECTION, key)
+  return PickStr(r.GetExtState(EXT_SECTION, key))
 end
 
 local function WriteStore(scope, key, val)
   if scope == "project" then
     if r.SetProjExtState then
-      r.SetProjExtState("", EXT_SECTION, key, val)
+      r.SetProjExtState(0, EXT_SECTION, key, val)
     elseif r.GetSetProjectExtState then
-      r.GetSetProjectExtState("", EXT_SECTION, key, val)
+      -- 5. Parameter setNewValue=true -> wirklich schreiben
+      r.GetSetProjectExtState(0, EXT_SECTION, key, val, true)
     end
   else
     r.SetExtState(EXT_SECTION, key, val, true)
@@ -49,12 +63,14 @@ local function LoadSettings(scope)
   settings.fx_filters = "dearVR"
   settings.excluded = {}
   settings.rules = {}
-  if s == "" then return end
+  settings.sort_mode = "default"
+  settings.last_used = {}
+  if type(s) ~= "string" or s == "" then return end
   for line in s:gmatch("([^\n]*)\n?") do
     if line:find("^FILTER:") then
-      settings.fx_filters = line:sub(9)
+      settings.fx_filters = line:sub(#"FILTER:" + 1)
     elseif line:find("^EXCL:") then
-      local fxn, presets = line:sub(7):match("^([^\t]*)\t(.*)$")
+      local fxn, presets = line:sub(#"EXCL:" + 1):match("^([^\t]*)\t(.*)$")
       if fxn then
         settings.excluded[fxn] = {}
         for p in (presets or ""):gmatch("[^|]+") do
@@ -62,16 +78,22 @@ local function LoadSettings(scope)
         end
       end
     elseif line:find("^RULE:") then
-      local pat, allowed = line:sub(6):match("^([^\t]*)\t(.*)$")
+      local pat, allowed = line:sub(#"RULE:" + 1):match("^([^\t]*)\t(.*)$")
       if pat then
         table.insert(settings.rules, { pattern = pat, allowed = allowed or "" })
       end
+    elseif line:find("^SORT:") then
+      local m = line:sub(#"SORT:" + 1)
+      if m == "az" or m == "za" or m == "newest" or m == "default" then settings.sort_mode = m end
+    elseif line:find("^USED:") then
+      local fxn, p, ts = line:sub(#"USED:" + 1):match("^([^\t]*)\t([^\t]*)\t(.*)$")
+      if fxn and p then settings.last_used[fxn .. "\t" .. p] = tonumber(ts) or 0 end
     end
   end
 end
 
 local function SaveSettings(settings_scope)
-  local t = { "FILTER:" .. settings.fx_filters }
+  local t = { "FILTER:" .. settings.fx_filters, "SORT:" .. settings.sort_mode }
   for fxn, presets in pairs(settings.excluded) do
     local lst = {}
     for p in pairs(presets) do table.insert(lst, p) end
@@ -82,7 +104,11 @@ local function SaveSettings(settings_scope)
   for _, rule in ipairs(settings.rules) do
     table.insert(t, "RULE:" .. rule.pattern .. "\t" .. rule.allowed)
   end
-  WriteStore(scope, "settings", table.concat(t, "\n"))
+  for key, ts in pairs(settings.last_used) do
+    local fxn, p = key:match("^([^\t]*)\t(.*)$")
+    if fxn and p then table.insert(t, "USED:" .. fxn .. "\t" .. p .. "\t" .. tostring(ts)) end
+  end
+  WriteStore(settings_scope, "settings", table.concat(t, "\n"))
 end
 
 LoadSettings(settings_scope)
@@ -101,52 +127,58 @@ local selected_fx_idx    = 0
 local param_filter    = ""
 local preset_cache    = {}
 local excl_sel_fxname = ""
+local excl_drag       = nil  -- Drag-Malen in Settings: Zielwert true/false
+local show_params     = r.GetExtState(EXT_SECTION, "show_params") == "1"
 ----------------------------------------------------------------
 -- Themes
 ----------------------------------------------------------------
+-- Farben als 0xAABBGGRR (ImGui-Format), jeweils aus CSS #RRGGBB umgerechnet
 local themes = {
   girly = {
-    { "Col_WindowBg", 0x1A0A12F2 },
-    { "Col_FrameBg", 0x40182EFF },
-    { "Col_FrameBgHovered", 0x5C2246FF },
-    { "Col_TitleBgActive", 0xE75480FF },
-    { "Col_Button", 0xE75480FF },
-    { "Col_ButtonHovered", 0xFF7BA9FF },
-    { "Col_ButtonActive", 0xFF9FC4FF },
-    { "Col_SliderGrab", 0xFFB6C1FF },
-    { "Col_SliderGrabActive", 0xFFD1DCFF },
-    { "Col_Header", 0xE75480FF },
-    { "Col_HeaderHovered", 0xFF7BA9FF },
-    { "Col_CheckMark", 0xFFB6C1FF },
-    { "Col_Text", 0xFFE4F1FF },
-    { "Col_Separator", 0xB5597EFF },
+    { "Col_WindowBg", 0xFF33122B },        -- #2B1233 dunkles Pink-Magenta
+    { "Col_PopupBg", 0xFF40183A },         -- #3A1840
+    { "Col_FrameBg", 0xFF6E2A5E },         -- #5E2A6E
+    { "Col_FrameBgHovered", 0xFF9C4186 },  -- #86419C
+    { "Col_TitleBgActive", 0xFFA34FFF },   -- #FF4FA3
+    { "Col_Button", 0xFFB05CFF },          -- #FF5CB0
+    { "Col_ButtonHovered", 0xFFC98FFF },   -- #FF8FC9
+    { "Col_ButtonActive", 0xFFE0C0FF },    -- #FFC0E0
+    { "Col_SliderGrab", 0xFFD29EFF },      -- #FF9ED2
+    { "Col_SliderGrabActive", 0xFFECD3FF },-- #FFD3EC
+    { "Col_Header", 0xFFB05CFF },          -- #FF5CB0
+    { "Col_HeaderHovered", 0xFFC98FFF },   -- #FF8FC9
+    { "Col_CheckMark", 0xFFECD3FF },       -- #FFD3EC
+    { "Col_Text", 0xFFF7F0FF },            -- #FFF0F7
+    { "Col_Separator", 0xFFB870E0 },       -- #E070B8
   },
   dark = {
-    { "Col_WindowBg", 0x141414E6 },
-    { "Col_FrameBg", 0x2A2A2AFF },
-    { "Col_FrameBgHovered", 0x3A3A3AFF },
-    { "Col_TitleBgActive", 0xB676B8FF },
-    { "Col_Button", 0xB676B8FF },
-    { "Col_ButtonHovered", 0xD98FD9FF },
-    { "Col_ButtonActive", 0xE6B8E6FF },
-    { "Col_SliderGrab", 0xE6B8E6FF },
-    { "Col_Header", 0xB676B8FF },
-    { "Col_HeaderHovered", 0xD98FD9FF },
-    { "Col_CheckMark", 0xE6B8E6FF },
+    { "Col_WindowBg", 0xFF201422 },        -- #221420 Pflaumen-dunkel
+    { "Col_PopupBg", 0xFF281A2A },         -- #2A1A28
+    { "Col_FrameBg", 0xFF38243A },         -- #3A2438
+    { "Col_FrameBgHovered", 0xFF482E4A },  -- #4A2E48
+    { "Col_TitleBgActive", 0xFFA86BC9 },   -- #C96BA8
+    { "Col_Button", 0xFFA86BC9 },          -- #C96BA8
+    { "Col_ButtonHovered", 0xFFC08CE0 },   -- #E08CC0
+    { "Col_ButtonActive", 0xFFD4B4F0 },    -- #F0B4D4
+    { "Col_SliderGrab", 0xFFD4B4F0 },      -- #F0B4D4
+    { "Col_Header", 0xFFA86BC9 },          -- #C96BA8
+    { "Col_HeaderHovered", 0xFFC08CE0 },   -- #E08CC0
+    { "Col_CheckMark", 0xFFD4B4F0 },       -- #F0B4D4
   },
   light = {
-    { "Col_WindowBg", 0xF4E6EEF7 },
-    { "Col_FrameBg", 0xE0C0D0FF },
-    { "Col_FrameBgHovered", 0xECD0DDFF },
-    { "Col_Text", 0x3A1A2AFF },
-    { "Col_Button", 0xE75480FF },
-    { "Col_ButtonHovered", 0xFF7BA9FF },
-    { "Col_ButtonActive", 0xFF9FC4FF },
-    { "Col_Header", 0xE75480FF },
-    { "Col_HeaderHovered", 0xFF7BA9FF },
-    { "Col_CheckMark", 0xE75480FF },
-    { "Col_SliderGrab", 0xE75480FF },
-    { "Col_Separator", 0xC89AA8FF },
+    { "Col_WindowBg", 0xFFEEE6F4 },        -- #F4E6EE
+    { "Col_PopupBg", 0xFFEEE6F4 },         -- #F4E6EE
+    { "Col_FrameBg", 0xFFD0C0E0 },         -- #E0C0D0
+    { "Col_FrameBgHovered", 0xFFDDD0EC },  -- #ECD0DD
+    { "Col_Text", 0xFF2A1A3A },            -- #3A1A2A
+    { "Col_Button", 0xFF8054E7 },          -- #E75480
+    { "Col_ButtonHovered", 0xFFA97BFF },   -- #FF7BA9
+    { "Col_ButtonActive", 0xFFC49FFF },    -- #FF9FC4
+    { "Col_Header", 0xFF8054E7 },          -- #E75480
+    { "Col_HeaderHovered", 0xFFA97BFF },   -- #FF7BA9
+    { "Col_CheckMark", 0xFF8054E7 },       -- #E75480
+    { "Col_SliderGrab", 0xFF8054E7 },      -- #E75480
+    { "Col_Separator", 0xFFA89AC8 },       -- #C89AA8
   },
 }
 local theme_order = { "girly", "dark", "light" }
@@ -210,20 +242,26 @@ local function FXMatches(fxname)
 end
 
 local function GetPresetNames(track, fx)
-  local retval, cur_idx, count = r.TrackFX_GetPresetIndex(track, fx)
-  if not retval or not count or count <= 0 then return nil, 0 end
+  -- TrackFX_GetPresetIndex liefert 2 Werte: (curidx, numberOfPresets)
+  local cur_idx, count = r.TrackFX_GetPresetIndex(track, fx)
+  if not count or count <= 0 then return nil, 0 end
   local key = r.GetTrackGUID(track) .. "|" .. fx .. "|" .. count
   if preset_cache[key] then return preset_cache[key].names, count end
 
+  -- Namen durch einmaliges Durchschalten ermitteln (ein Undo-Schritt,
+  -- danach wird das urspruengliche Preset wiederhergestellt)
   local names = {}
+  r.Undo_BeginBlock()
   for i = 0, count - 1 do
-    r.TrackFX_SetPresetIndex(track, fx, i)
+    if not r.TrackFX_SetPresetByIndex(track, fx, i) then break end
     local _, name = r.TrackFX_GetPreset(track, fx)
-    names[i + 1] = name
+    names[i + 1] = name or ""
   end
-  r.TrackFX_SetPresetIndex(track, fx, cur_idx)
+  if cur_idx and cur_idx >= 0 then r.TrackFX_SetPresetByIndex(track, fx, cur_idx) end
+  r.Undo_EndBlock("FX Preset Browser: Presetnamen lesen", -1)
+  if #names == 0 then return nil, 0 end
   preset_cache[key] = { names = names }
-  return names, count
+  return names, #names
 end
 
 local function FindRule(trackname)
@@ -241,7 +279,7 @@ local function AllowedPresets(track, fx, fxname)
   local names, count = GetPresetNames(track, fx)
   if not names then return nil, nil end
 
-  local retval, cur_idx = r.TrackFX_GetPresetIndex(track, fx)
+  local cur_idx = r.TrackFX_GetPresetIndex(track, fx)
   local _, trackname = r.GetTrackName(track)
   local rule = FindRule(trackname)
   local excl = settings.excluded[fxname]
@@ -268,18 +306,43 @@ local function AllowedPresets(track, fx, fxname)
   return list, cur
 end
 
+local sort_labels = { default = "wie gehabt", az = "A-Z", za = "Z-A", newest = "neueste zuerst" }
+local sort_order  = { "default", "az", "za", "newest" }
+
+-- sortiert eine Presetliste (In-Place) gemaess settings.sort_mode
+local function SortPresetList(list, fxname)
+  local mode = settings.sort_mode
+  if mode == "az" then
+    table.sort(list, function(a, b) return a.name:lower() < b.name:lower() end)
+  elseif mode == "za" then
+    table.sort(list, function(a, b) return a.name:lower() > b.name:lower() end)
+  elseif mode == "newest" then
+    local lu = settings.last_used
+    table.sort(list, function(a, b)
+      local ta = lu[fxname .. "\t" .. a.name] or 0
+      local tb = lu[fxname .. "\t" .. b.name] or 0
+      if ta ~= tb then return ta > tb end
+      return a.name:lower() < b.name:lower()
+    end)
+  end
+  -- "default" = Reihenfolge wie gehabt (Preset-Index)
+end
+
 local function DrawPresetCombo(track, fx, label)
   local _, fxname = r.TrackFX_GetFXName(track, fx)
   local list, cur = AllowedPresets(track, fx, fxname)
+  local _, cur_preset = r.TrackFX_GetPreset(track, fx)
   if not list or #list == 0 then
-    r.ImGui_TextDisabled(ctx, "keine Presets")
+    -- trotzdem den aktuell gewaehlten Presetnamen anzeigen
+    r.ImGui_TextDisabled(ctx, (cur_preset and cur_preset ~= "") and cur_preset or "keine Presets")
     return
   end
-  local _, cur_preset = r.TrackFX_GetPreset(track, fx)
-  if r.ImGui_BeginCombo(ctx, label, cur_preset) then
+  if r.ImGui_BeginCombo(ctx, label, cur_preset or "?") then
     for i, p in ipairs(list) do
       if r.ImGui_Selectable(ctx, p.name, i == cur) then
-        r.TrackFX_SetPresetIndex(track, fx, p.idx)
+        r.TrackFX_SetPresetByIndex(track, fx, p.idx)
+        settings.last_used[fxname .. "\t" .. p.name] = os.time()
+        SaveSettings(settings_scope)
       end
     end
     r.ImGui_EndCombo(ctx)
@@ -335,6 +398,13 @@ local function DrawBrowser(track, fx)
   r.ImGui_SameLine(ctx)
   DrawPresetCombo(track, fx, "##preset")
   r.ImGui_Separator(ctx)
+
+  -- Parameter erst auf expliziten Wunsch anzeigen (Presets laden sonst
+  -- mitten im Rendern die Parameter um)
+  if not show_params then
+    r.ImGui_TextDisabled(ctx, "Parameter ausgeblendet - 'Parameter anzeigen' aktivieren.")
+    return
+  end
 
   local nparams = r.TrackFX_GetNumParams(track, fx)
   local changed, buf = r.ImGui_InputTextWithHint(ctx, "##filter", "Parameter filtern...", param_filter)
@@ -473,6 +543,18 @@ local function DrawSettings()
         r.ImGui_EndCombo(ctx)
       end
 
+      r.ImGui_Text(ctx, "Sortierung:")
+      r.ImGui_SameLine(ctx)
+      if r.ImGui_BeginCombo(ctx, "##sort", sort_labels[settings.sort_mode] or settings.sort_mode) then
+        for _, mode in ipairs(sort_order) do
+          if r.ImGui_Selectable(ctx, sort_labels[mode], settings.sort_mode == mode) then
+            settings.sort_mode = mode
+            SaveSettings(settings_scope)
+          end
+        end
+        r.ImGui_EndCombo(ctx)
+      end
+
       local track, fx
       for i = 0, r.GetNumTracks() - 1 do
         local tr = r.GetTrack(0, i)
@@ -487,26 +569,40 @@ local function DrawSettings()
       end
 
       if track then
-        local list = AllowedPresets(track, fx, excl_sel_fxname)
+        -- volle Presetliste (nicht AllowedPresets), damit ausgeschlossene
+        -- Presets sichtbar bleiben und per Klick/Drag wieder aktivierbar sind
+        local pnames = GetPresetNames(track, fx)
+        local list
+        if pnames then
+          list = {}
+          for i, nm in ipairs(pnames) do list[i] = { name = nm, idx = i - 1 } end
+        end
         if list then
           settings.excluded[excl_sel_fxname] = settings.excluded[excl_sel_fxname] or {}
           local excl = settings.excluded[excl_sel_fxname]
+          SortPresetList(list, excl_sel_fxname)
+          -- Klick = umschalten; Maus draggen ueber mehrere Eintraege malt
+          -- denselben Zustand auf alle beruehrten Presets
+          if not r.ImGui_IsMouseDown(ctx, 0) then excl_drag = nil end
           if r.ImGui_BeginChild(ctx, "##excllist") then
+            local changed = false
             for _, p in ipairs(list) do
-              local is_excl = excl[p.name] and 1 or 0
-              local c, nv = r.ImGui_Checkbox(ctx, p.name, is_excl)
-              if c then
-                if nv == 1 then
-                  excl[p.name] = true
-                else
-                  excl[p.name] = nil
+              local is_excl = excl[p.name] == true
+              r.ImGui_PushID(ctx, p.name)
+              r.ImGui_Selectable(ctx, p.name, is_excl)
+              if r.ImGui_IsItemHovered(ctx) and r.ImGui_IsMouseDown(ctx, 0) then
+                if excl_drag == nil then excl_drag = not is_excl end
+                if is_excl ~= excl_drag then
+                  if excl_drag then excl[p.name] = true else excl[p.name] = nil end
+                  changed = true
                 end
-                SaveSettings(settings_scope)
               end
+              r.ImGui_PopID(ctx)
             end
             r.ImGui_EndChild(ctx)
+            if changed then SaveSettings(settings_scope) end
           end
-          r.ImGui_TextDisabled(ctx, "Haekchen = Preset ist ausgeschlossen.")
+          r.ImGui_TextDisabled(ctx, "Klick = umschalten, Drag = malt auf alle beruehrten. Markiert = ausgeschlossen.")
         else
           r.ImGui_TextDisabled(ctx, "Dieses FX hat keine Presets.")
         end
@@ -543,13 +639,26 @@ end
 ----------------------------------------------------------------
 -- Main
 ----------------------------------------------------------------
+-- letztes gueltiges Focus-FX merken, damit die Anzeige nicht "wegspringt",
+-- sobald das Script-Fenster selbst fokussiert ist (GetFocusedFX() == 0)
+local last_focus_track, last_focus_fx = nil, nil
+
 local function GetCurrentFX()
   if follow_focused then
-    local retval, tr, fn = r.GetFocusedFX()
-    if retval == 1 and tr ~= 0 then
-      local track = r.GetTrack(0, tr - 1)
-      if track then return track, fn end
+    -- liefert (retval, tracknumber, itemnumber, fxnumber); aeltere Versionen
+    -- nur (retval, tracknumber, fxnumber) -> fxnumber ist dann nil
+    local retval, tr, a, b = r.GetFocusedFX()
+    local fn = (b ~= nil) and b or a
+    if retval == 1 and tr >= 0 then
+      local track = (tr == 0) and r.GetMasterTrack(0) or r.GetTrack(0, tr - 1)
+      if track and fn >= 0 and fn < r.TrackFX_GetCount(track) then
+        last_focus_track, last_focus_fx = track, fn
+      end
     end
+  end
+  if last_focus_track and r.ValidatePtr(last_focus_track, "MediaTrack*")
+     and last_focus_fx < r.TrackFX_GetCount(last_focus_track) then
+    return last_focus_track, last_focus_fx
   end
   local track = r.GetTrack(0, selected_track_idx)
   if track and selected_fx_idx < r.TrackFX_GetCount(track) then
@@ -568,6 +677,13 @@ local function frame()
     if vis then
       local _, fol = r.ImGui_Checkbox(ctx, "Fokussiertem FX folgen", follow_focused and 1 or 0)
       follow_focused = fol == 1
+      r.ImGui_SameLine(ctx)
+      local sp_now = show_params and 1 or 0
+      local _, sp = r.ImGui_Checkbox(ctx, "Parameter anzeigen", sp_now)
+      if sp ~= sp_now then
+        show_params = sp == 1
+        r.SetExtState(EXT_SECTION, "show_params", show_params and "1" or "0", true)
+      end
       r.ImGui_SameLine(ctx)
       if r.ImGui_Button(ctx, "Settings") then
         show_settings = not show_settings
