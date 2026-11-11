@@ -132,53 +132,54 @@ local show_params     = r.GetExtState(EXT_SECTION, "show_params") == "1"
 ----------------------------------------------------------------
 -- Themes
 ----------------------------------------------------------------
--- Farben als 0xAABBGGRR (ImGui-Format), jeweils aus CSS #RRGGBB umgerechnet
+-- Farben als 0xRRGGBBAA (ReaImGui-Lua-Format: Alpha ist das LETZTE Byte,
+-- Doku: "Color is in 0xRRGGBBAA"). Alpha FF = voll deckend (nicht durchsichtig).
 local themes = {
   girly = {
-    { "Col_WindowBg", 0xFF33122B },        -- #2B1233 dunkles Pink-Magenta
-    { "Col_PopupBg", 0xFF40183A },         -- #3A1840
-    { "Col_FrameBg", 0xFF6E2A5E },         -- #5E2A6E
-    { "Col_FrameBgHovered", 0xFF9C4186 },  -- #86419C
-    { "Col_TitleBgActive", 0xFFA34FFF },   -- #FF4FA3
-    { "Col_Button", 0xFFB05CFF },          -- #FF5CB0
-    { "Col_ButtonHovered", 0xFFC98FFF },   -- #FF8FC9
-    { "Col_ButtonActive", 0xFFE0C0FF },    -- #FFC0E0
-    { "Col_SliderGrab", 0xFFD29EFF },      -- #FF9ED2
-    { "Col_SliderGrabActive", 0xFFECD3FF },-- #FFD3EC
-    { "Col_Header", 0xFFB05CFF },          -- #FF5CB0
-    { "Col_HeaderHovered", 0xFFC98FFF },   -- #FF8FC9
-    { "Col_CheckMark", 0xFFECD3FF },       -- #FFD3EC
-    { "Col_Text", 0xFFF7F0FF },            -- #FFF0F7
-    { "Col_Separator", 0xFFB870E0 },       -- #E070B8
+    { "Col_WindowBg", 0x2B1233FF },        -- #2B1233 dunkles Pink-Magenta
+    { "Col_PopupBg", 0x3A1840FF },         -- #3A1840
+    { "Col_FrameBg", 0x5E2A6EFF },         -- #5E2A6E
+    { "Col_FrameBgHovered", 0x86419CFF },  -- #86419C
+    { "Col_TitleBgActive", 0xFF4FA3FF },   -- #FF4FA3
+    { "Col_Button", 0xFF5CB0FF },          -- #FF5CB0
+    { "Col_ButtonHovered", 0xFF8FC9FF },   -- #FF8FC9
+    { "Col_ButtonActive", 0xFFC0E0FF },    -- #FFC0E0
+    { "Col_SliderGrab", 0xFF9ED2FF },      -- #FF9ED2
+    { "Col_SliderGrabActive", 0xFFD3ECFF },-- #FFD3EC
+    { "Col_Header", 0xFF5CB0FF },          -- #FF5CB0
+    { "Col_HeaderHovered", 0xFF8FC9FF },   -- #FF8FC9
+    { "Col_CheckMark", 0xFFD3ECFF },       -- #FFD3EC
+    { "Col_Text", 0xFFF0F7FF },            -- #FFF0F7
+    { "Col_Separator", 0xE070B8FF },       -- #E070B8
   },
   dark = {
-    { "Col_WindowBg", 0xFF201422 },        -- #221420 Pflaumen-dunkel
-    { "Col_PopupBg", 0xFF281A2A },         -- #2A1A28
-    { "Col_FrameBg", 0xFF38243A },         -- #3A2438
-    { "Col_FrameBgHovered", 0xFF482E4A },  -- #4A2E48
-    { "Col_TitleBgActive", 0xFFA86BC9 },   -- #C96BA8
-    { "Col_Button", 0xFFA86BC9 },          -- #C96BA8
-    { "Col_ButtonHovered", 0xFFC08CE0 },   -- #E08CC0
-    { "Col_ButtonActive", 0xFFD4B4F0 },    -- #F0B4D4
-    { "Col_SliderGrab", 0xFFD4B4F0 },      -- #F0B4D4
-    { "Col_Header", 0xFFA86BC9 },          -- #C96BA8
-    { "Col_HeaderHovered", 0xFFC08CE0 },   -- #E08CC0
-    { "Col_CheckMark", 0xFFD4B4F0 },       -- #F0B4D4
+    { "Col_WindowBg", 0x221420FF },        -- #221420 Pflaumen-dunkel
+    { "Col_PopupBg", 0x2A1A28FF },         -- #2A1A28
+    { "Col_FrameBg", 0x3A2438FF },         -- #3A2438
+    { "Col_FrameBgHovered", 0x4A2E48FF },  -- #4A2E48
+    { "Col_TitleBgActive", 0xC96BA8FF },   -- #C96BA8
+    { "Col_Button", 0xC96BA8FF },          -- #C96BA8
+    { "Col_ButtonHovered", 0xE08CC0FF },   -- #E08CC0
+    { "Col_ButtonActive", 0xF0B4D4FF },    -- #F0B4D4
+    { "Col_SliderGrab", 0xF0B4D4FF },      -- #F0B4D4
+    { "Col_Header", 0xC96BA8FF },          -- #C96BA8
+    { "Col_HeaderHovered", 0xE08CC0FF },   -- #E08CC0
+    { "Col_CheckMark", 0xF0B4D4FF },       -- #F0B4D4
   },
   light = {
-    { "Col_WindowBg", 0xFFEEE6F4 },        -- #F4E6EE
-    { "Col_PopupBg", 0xFFEEE6F4 },         -- #F4E6EE
-    { "Col_FrameBg", 0xFFD0C0E0 },         -- #E0C0D0
-    { "Col_FrameBgHovered", 0xFFDDD0EC },  -- #ECD0DD
-    { "Col_Text", 0xFF2A1A3A },            -- #3A1A2A
-    { "Col_Button", 0xFF8054E7 },          -- #E75480
-    { "Col_ButtonHovered", 0xFFA97BFF },   -- #FF7BA9
-    { "Col_ButtonActive", 0xFFC49FFF },    -- #FF9FC4
-    { "Col_Header", 0xFF8054E7 },          -- #E75480
-    { "Col_HeaderHovered", 0xFFA97BFF },   -- #FF7BA9
-    { "Col_CheckMark", 0xFF8054E7 },       -- #E75480
-    { "Col_SliderGrab", 0xFF8054E7 },      -- #E75480
-    { "Col_Separator", 0xFFA89AC8 },       -- #C89AA8
+    { "Col_WindowBg", 0xF4E6EEFF },        -- #F4E6EE
+    { "Col_PopupBg", 0xF4E6EEFF },         -- #F4E6EE
+    { "Col_FrameBg", 0xE0C0D0FF },         -- #E0C0D0
+    { "Col_FrameBgHovered", 0xECD0DDFF },  -- #ECD0DD
+    { "Col_Text", 0x3A1A2AFF },            -- #3A1A2A
+    { "Col_Button", 0xE75480FF },          -- #E75480
+    { "Col_ButtonHovered", 0xFF7BA9FF },   -- #FF7BA9
+    { "Col_ButtonActive", 0xFF9FC4FF },    -- #FF9FC4
+    { "Col_Header", 0xE75480FF },          -- #E75480
+    { "Col_HeaderHovered", 0xFF7BA9FF },   -- #FF7BA9
+    { "Col_CheckMark", 0xE75480FF },       -- #E75480
+    { "Col_SliderGrab", 0xE75480FF },      -- #E75480
+    { "Col_Separator", 0xC89AA8FF },       -- #C89AA8
   },
 }
 local theme_order = { "girly", "dark", "light" }
