@@ -113,6 +113,7 @@ local selected_fx_idx    = 0
 local param_filter    = ""
 local preset_cache    = {}
 local excl_sel_fxname = ""
+local excl_drag       = nil  -- Drag-Malen in Settings: Zielwert true/false
 local show_params     = r.GetExtState(EXT_SECTION, "show_params") == "1"
 ----------------------------------------------------------------
 -- Themes
@@ -514,26 +515,39 @@ local function DrawSettings()
       end
 
       if track then
-        local list = AllowedPresets(track, fx, excl_sel_fxname)
+        -- volle Presetliste (nicht AllowedPresets), damit ausgeschlossene
+        -- Presets sichtbar bleiben und per Klick/Drag wieder aktivierbar sind
+        local pnames = GetPresetNames(track, fx)
+        local list
+        if pnames then
+          list = {}
+          for i, nm in ipairs(pnames) do list[i] = { name = nm, idx = i - 1 } end
+        end
         if list then
           settings.excluded[excl_sel_fxname] = settings.excluded[excl_sel_fxname] or {}
           local excl = settings.excluded[excl_sel_fxname]
+          -- Klick = umschalten; Maus draggen ueber mehrere Eintraege malt
+          -- denselben Zustand auf alle beruehrten Presets
+          if not r.ImGui_IsMouseDown(ctx, 0) then excl_drag = nil end
           if r.ImGui_BeginChild(ctx, "##excllist") then
+            local changed = false
             for _, p in ipairs(list) do
-              local is_excl = excl[p.name] and 1 or 0
-              local c, nv = r.ImGui_Checkbox(ctx, p.name, is_excl)
-              if c then
-                if nv == 1 then
-                  excl[p.name] = true
-                else
-                  excl[p.name] = nil
+              local is_excl = excl[p.name] == true
+              r.ImGui_PushID(ctx, p.name)
+              r.ImGui_Selectable(ctx, p.name, is_excl)
+              if r.ImGui_IsItemHovered(ctx) and r.ImGui_IsMouseDown(ctx, 0) then
+                if excl_drag == nil then excl_drag = not is_excl end
+                if is_excl ~= excl_drag then
+                  if excl_drag then excl[p.name] = true else excl[p.name] = nil end
+                  changed = true
                 end
-                SaveSettings(settings_scope)
               end
+              r.ImGui_PopID(ctx)
             end
             r.ImGui_EndChild(ctx)
+            if changed then SaveSettings(settings_scope) end
           end
-          r.ImGui_TextDisabled(ctx, "Haekchen = Preset ist ausgeschlossen.")
+          r.ImGui_TextDisabled(ctx, "Klick = umschalten, Drag = malt auf alle beruehrten. Markiert = ausgeschlossen.")
         else
           r.ImGui_TextDisabled(ctx, "Dieses FX hat keine Presets.")
         end
