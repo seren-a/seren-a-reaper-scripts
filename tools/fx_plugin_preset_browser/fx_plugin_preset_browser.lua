@@ -121,6 +121,7 @@ local ctx
 local show_browser   = true
 local show_overview  = true
 local show_settings  = false
+local win_collapsed  = {}  -- merkt eingeklappte Fenster (Re-Expand -> Groesse restaurieren)
 local follow_focused = true
 local selected_track_idx = 0
 local selected_fx_idx    = 0
@@ -429,8 +430,13 @@ end
 -- Overview-Fenster
 ----------------------------------------------------------------
 local function DrawOverview()
-  r.ImGui_SetNextWindowSize(ctx, 520, 400, r.ImGui_Cond_FirstUseEver())
+  if win_collapsed.overview then
+    r.ImGui_SetNextWindowSize(ctx, 520, 400, r.ImGui_Cond_Always())
+  else
+    r.ImGui_SetNextWindowSize(ctx, 520, 400, r.ImGui_Cond_FirstUseEver())
+  end
   local vis, open = r.ImGui_Begin(ctx, "Preset Overview", true)
+  win_collapsed.overview = r.ImGui_IsWindowCollapsed(ctx)
   if vis then
     r.ImGui_TextDisabled(ctx, "FX-Filter: " .. settings.fx_filters)
     r.ImGui_Separator(ctx)
@@ -461,8 +467,8 @@ local function DrawOverview()
       end
       r.ImGui_EndChild(ctx)
     end
+    r.ImGui_End(ctx)  -- ReaImGui: nur wenn Begin true lieferte (sonst "End() too many times")
   end
-  r.ImGui_End(ctx)  -- immer aufrufen, auch wenn Begin false liefert (z. B. eingeklappt)
   show_overview = open
 end
 
@@ -637,8 +643,8 @@ local function DrawSettings()
       table.insert(settings.rules, { pattern = "", allowed = "" })
     end
     r.ImGui_TextDisabled(ctx, 'Beispiel: Pattern "VO", erlaubt "Room A,Room B".')
+    r.ImGui_End(ctx)  -- ReaImGui: nur wenn Begin true lieferte (sonst "End() too many times")
   end
-  r.ImGui_End(ctx)  -- immer aufrufen, auch wenn Begin false liefert (z. B. eingeklappt)
   show_settings = open
 end
 
@@ -678,8 +684,15 @@ local function frame()
   ApplyTheme()
 
   if show_browser then
-    r.ImGui_SetNextWindowSize(ctx, 420, 500, r.ImGui_Cond_FirstUseEver())
+    -- ReaImGui poppt eingeklappte Fenster von selbst; beim Wiederaufklappen
+    -- waere die Hoehe sonst 1px -> einmalig Cond_Always, sonst FirstUseEver
+    if win_collapsed.browser then
+      r.ImGui_SetNextWindowSize(ctx, 420, 500, r.ImGui_Cond_Always())
+    else
+      r.ImGui_SetNextWindowSize(ctx, 420, 500, r.ImGui_Cond_FirstUseEver())
+    end
     local vis, open = r.ImGui_Begin(ctx, "FX Preset & Parameter Browser", true)
+    win_collapsed.browser = r.ImGui_IsWindowCollapsed(ctx)
     if vis then
       local _, fol = r.ImGui_Checkbox(ctx, "Fokussiertem FX folgen", follow_focused and 1 or 0)
       follow_focused = fol == 1
@@ -704,8 +717,8 @@ local function frame()
       else
         r.ImGui_TextDisabled(ctx, "Kein FX im Fokus / ausgewaehlt.")
       end
+      r.ImGui_End(ctx)  -- ReaImGui: nur wenn Begin true lieferte (sonst "End() too many times")
     end
-    r.ImGui_End(ctx)  -- immer aufrufen, auch wenn Begin false liefert (z. B. eingeklappt)
     show_browser = open
   end
 
