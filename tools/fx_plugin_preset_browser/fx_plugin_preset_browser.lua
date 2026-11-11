@@ -461,8 +461,8 @@ local function DrawOverview()
       end
       r.ImGui_EndChild(ctx)
     end
-    r.ImGui_End(ctx)
   end
+  r.ImGui_End(ctx)  -- immer aufrufen, auch wenn Begin false liefert (z. B. eingeklappt)
   show_overview = open
 end
 
@@ -637,9 +637,8 @@ local function DrawSettings()
       table.insert(settings.rules, { pattern = "", allowed = "" })
     end
     r.ImGui_TextDisabled(ctx, 'Beispiel: Pattern "VO", erlaubt "Room A,Room B".')
-
-    r.ImGui_End(ctx)
   end
+  r.ImGui_End(ctx)  -- immer aufrufen, auch wenn Begin false liefert (z. B. eingeklappt)
   show_settings = open
 end
 
@@ -705,8 +704,8 @@ local function frame()
       else
         r.ImGui_TextDisabled(ctx, "Kein FX im Fokus / ausgewaehlt.")
       end
-      r.ImGui_End(ctx)
     end
+    r.ImGui_End(ctx)  -- immer aufrufen, auch wenn Begin false liefert (z. B. eingeklappt)
     show_browser = open
   end
 
