@@ -18,26 +18,38 @@ local settings = {
 local settings_scope = r.GetExtState(EXT_SECTION, "scope")
 if settings_scope ~= "project" then settings_scope = "global" end
 
+-- REAPER-Funktionen liefern mehrere Rueckgabewerte (z. B. integer retval,
+-- string value). Nimm immer den String-Rueckgabewert, egal welche Version.
+local function PickStr(...)
+  for i = 1, select("#", ...) do
+    local v = select(i, ...)
+    if type(v) == "string" then return v end
+  end
+  return ""
+end
+
 local function ReadStore(scope, key)
   if scope == "project" then
     if r.GetSetProjectExtState then
-      local _, v = r.GetSetProjectExtState("", EXT_SECTION, key, "")
-      return v or ""
+      -- 5. Parameter setNewValue=false -> Lesen, liefert retval + value
+      return PickStr(r.GetSetProjectExtState(0, EXT_SECTION, key, "", false))
     end
     if r.GetProjExtState then
-      return r.GetProjExtState("", EXT_SECTION, key) or ""
+      -- liefert integer retval + string value (aeltere Versionen: nur string)
+      return PickStr(r.GetProjExtState(0, EXT_SECTION, key))
     end
     return ""
   end
-  return r.GetExtState(EXT_SECTION, key)
+  return PickStr(r.GetExtState(EXT_SECTION, key))
 end
 
 local function WriteStore(scope, key, val)
   if scope == "project" then
     if r.SetProjExtState then
-      r.SetProjExtState("", EXT_SECTION, key, val)
+      r.SetProjExtState(0, EXT_SECTION, key, val)
     elseif r.GetSetProjectExtState then
-      r.GetSetProjectExtState("", EXT_SECTION, key, val)
+      -- 5. Parameter setNewValue=true -> wirklich schreiben
+      r.GetSetProjectExtState(0, EXT_SECTION, key, val, true)
     end
   else
     r.SetExtState(EXT_SECTION, key, val, true)
@@ -49,12 +61,12 @@ local function LoadSettings(scope)
   settings.fx_filters = "dearVR"
   settings.excluded = {}
   settings.rules = {}
-  if s == "" then return end
+  if type(s) ~= "string" or s == "" then return end
   for line in s:gmatch("([^\n]*)\n?") do
     if line:find("^FILTER:") then
-      settings.fx_filters = line:sub(9)
+      settings.fx_filters = line:sub(#"FILTER:" + 1)
     elseif line:find("^EXCL:") then
-      local fxn, presets = line:sub(7):match("^([^\t]*)\t(.*)$")
+      local fxn, presets = line:sub(#"EXCL:" + 1):match("^([^\t]*)\t(.*)$")
       if fxn then
         settings.excluded[fxn] = {}
         for p in (presets or ""):gmatch("[^|]+") do
@@ -62,7 +74,7 @@ local function LoadSettings(scope)
         end
       end
     elseif line:find("^RULE:") then
-      local pat, allowed = line:sub(6):match("^([^\t]*)\t(.*)$")
+      local pat, allowed = line:sub(#"RULE:" + 1):match("^([^\t]*)\t(.*)$")
       if pat then
         table.insert(settings.rules, { pattern = pat, allowed = allowed or "" })
       end
@@ -82,7 +94,7 @@ local function SaveSettings(settings_scope)
   for _, rule in ipairs(settings.rules) do
     table.insert(t, "RULE:" .. rule.pattern .. "\t" .. rule.allowed)
   end
-  WriteStore(scope, "settings", table.concat(t, "\n"))
+  WriteStore(settings_scope, "settings", table.concat(t, "\n"))
 end
 
 LoadSettings(settings_scope)
