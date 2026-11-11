@@ -132,49 +132,53 @@ local show_params     = r.GetExtState(EXT_SECTION, "show_params") == "1"
 ----------------------------------------------------------------
 -- Themes
 ----------------------------------------------------------------
+-- Farben als 0xAABBGGRR (ImGui-Format), jeweils aus CSS #RRGGBB umgerechnet
 local themes = {
   girly = {
-    { "Col_WindowBg", 0x1A0A12F2 },
-    { "Col_FrameBg", 0x40182EFF },
-    { "Col_FrameBgHovered", 0x5C2246FF },
-    { "Col_TitleBgActive", 0xE75480FF },
-    { "Col_Button", 0xE75480FF },
-    { "Col_ButtonHovered", 0xFF7BA9FF },
-    { "Col_ButtonActive", 0xFF9FC4FF },
-    { "Col_SliderGrab", 0xFFB6C1FF },
-    { "Col_SliderGrabActive", 0xFFD1DCFF },
-    { "Col_Header", 0xE75480FF },
-    { "Col_HeaderHovered", 0xFF7BA9FF },
-    { "Col_CheckMark", 0xFFB6C1FF },
-    { "Col_Text", 0xFFE4F1FF },
-    { "Col_Separator", 0xB5597EFF },
+    { "Col_WindowBg", 0xFF33122B },        -- #2B1233 dunkles Pink-Magenta
+    { "Col_PopupBg", 0xFF40183A },         -- #3A1840
+    { "Col_FrameBg", 0xFF6E2A5E },         -- #5E2A6E
+    { "Col_FrameBgHovered", 0xFF9C4186 },  -- #86419C
+    { "Col_TitleBgActive", 0xFFA34FFF },   -- #FF4FA3
+    { "Col_Button", 0xFFB05CFF },          -- #FF5CB0
+    { "Col_ButtonHovered", 0xFFC98FFF },   -- #FF8FC9
+    { "Col_ButtonActive", 0xFFE0C0FF },    -- #FFC0E0
+    { "Col_SliderGrab", 0xFFD29EFF },      -- #FF9ED2
+    { "Col_SliderGrabActive", 0xFFECD3FF },-- #FFD3EC
+    { "Col_Header", 0xFFB05CFF },          -- #FF5CB0
+    { "Col_HeaderHovered", 0xFFC98FFF },   -- #FF8FC9
+    { "Col_CheckMark", 0xFFECD3FF },       -- #FFD3EC
+    { "Col_Text", 0xFFF7F0FF },            -- #FFF0F7
+    { "Col_Separator", 0xFFB870E0 },       -- #E070B8
   },
   dark = {
-    { "Col_WindowBg", 0x141414E6 },
-    { "Col_FrameBg", 0x2A2A2AFF },
-    { "Col_FrameBgHovered", 0x3A3A3AFF },
-    { "Col_TitleBgActive", 0xB676B8FF },
-    { "Col_Button", 0xB676B8FF },
-    { "Col_ButtonHovered", 0xD98FD9FF },
-    { "Col_ButtonActive", 0xE6B8E6FF },
-    { "Col_SliderGrab", 0xE6B8E6FF },
-    { "Col_Header", 0xB676B8FF },
-    { "Col_HeaderHovered", 0xD98FD9FF },
-    { "Col_CheckMark", 0xE6B8E6FF },
+    { "Col_WindowBg", 0xFF201422 },        -- #221420 Pflaumen-dunkel
+    { "Col_PopupBg", 0xFF281A2A },         -- #2A1A28
+    { "Col_FrameBg", 0xFF38243A },         -- #3A2438
+    { "Col_FrameBgHovered", 0xFF482E4A },  -- #4A2E48
+    { "Col_TitleBgActive", 0xFFA86BC9 },   -- #C96BA8
+    { "Col_Button", 0xFFA86BC9 },          -- #C96BA8
+    { "Col_ButtonHovered", 0xFFC08CE0 },   -- #E08CC0
+    { "Col_ButtonActive", 0xFFD4B4F0 },    -- #F0B4D4
+    { "Col_SliderGrab", 0xFFD4B4F0 },      -- #F0B4D4
+    { "Col_Header", 0xFFA86BC9 },          -- #C96BA8
+    { "Col_HeaderHovered", 0xFFC08CE0 },   -- #E08CC0
+    { "Col_CheckMark", 0xFFD4B4F0 },       -- #F0B4D4
   },
   light = {
-    { "Col_WindowBg", 0xF4E6EEF7 },
-    { "Col_FrameBg", 0xE0C0D0FF },
-    { "Col_FrameBgHovered", 0xECD0DDFF },
-    { "Col_Text", 0x3A1A2AFF },
-    { "Col_Button", 0xE75480FF },
-    { "Col_ButtonHovered", 0xFF7BA9FF },
-    { "Col_ButtonActive", 0xFF9FC4FF },
-    { "Col_Header", 0xE75480FF },
-    { "Col_HeaderHovered", 0xFF7BA9FF },
-    { "Col_CheckMark", 0xE75480FF },
-    { "Col_SliderGrab", 0xE75480FF },
-    { "Col_Separator", 0xC89AA8FF },
+    { "Col_WindowBg", 0xFFEEE6F4 },        -- #F4E6EE
+    { "Col_PopupBg", 0xFFEEE6F4 },         -- #F4E6EE
+    { "Col_FrameBg", 0xFFD0C0E0 },         -- #E0C0D0
+    { "Col_FrameBgHovered", 0xFFDDD0EC },  -- #ECD0DD
+    { "Col_Text", 0xFF2A1A3A },            -- #3A1A2A
+    { "Col_Button", 0xFF8054E7 },          -- #E75480
+    { "Col_ButtonHovered", 0xFFA97BFF },   -- #FF7BA9
+    { "Col_ButtonActive", 0xFFC49FFF },    -- #FF9FC4
+    { "Col_Header", 0xFF8054E7 },          -- #E75480
+    { "Col_HeaderHovered", 0xFFA97BFF },   -- #FF7BA9
+    { "Col_CheckMark", 0xFF8054E7 },       -- #E75480
+    { "Col_SliderGrab", 0xFF8054E7 },      -- #E75480
+    { "Col_Separator", 0xFFA89AC8 },       -- #C89AA8
   },
 }
 local theme_order = { "girly", "dark", "light" }
