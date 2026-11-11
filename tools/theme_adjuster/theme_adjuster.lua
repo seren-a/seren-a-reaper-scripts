@@ -44,53 +44,86 @@ local I = setmetatable({}, {
   end,
 })
 
+-- je nach ReaImGui-Version ist eine Konstante eine Zahl oder eine Funktion,
+-- die die Zahl liefert – einmalig auflösen
+local function resolve_const(name)
+  local v = r["ImGui_" .. name]
+  if type(v) == "function" then v = v() end
+  if type(v) == "number" then return v end
+end
+
 local COL = {}
-local function resolve_colors()
-  local names = {
+local FLAG = {}
+local function resolve_constants()
+  local colors = {
     "WindowBg", "FrameBg", "FrameBgHovered", "FrameBgActive", "Button",
     "ButtonHovered", "ButtonActive", "Tab", "TabHovered", "TabActive",
     "Header", "HeaderHovered", "HeaderActive", "TitleBg", "PopupBg",
     "Text", "TextDisabled", "CheckMark", "SliderGrab", "Border",
   }
-  for _, n in ipairs(names) do
-    local v = r["ImGui_Col_" .. n]
-    -- je nach ReaImGui-Version ist die Konstante eine Zahl oder eine
-    -- Funktion, die die Zahl liefert – einmalig auflösen
-    if type(v) == "function" then v = v() end
-    if type(v) == "number" then COL[n] = v end
+  for _, n in ipairs(colors) do
+    local v = resolve_const("Col_" .. n)
+    if v then COL[n] = v end
+  end
+  local flags = {
+    "TableColumnFlags_WidthFixed",
+    "TableColumnFlags_WidthStretch",
+  }
+  for _, n in ipairs(flags) do
+    local v = resolve_const(n)
+    if v then FLAG[n] = v end
   end
 end
-resolve_colors()
+resolve_constants()
 
 local function push_color(name, v)
   if COL[name] then I.PushStyleColor(ctx, COL[name], v) return 1 end
   return 0
 end
 
--- ImGui-Farben sind 0xRRGGBBAA (Alpha = letztes Byte!)
+-- In manchen ReaImGui-Versionen ist ImGui_TextUnformatted nicht gebunden
+-- (die text_end-Signatur wird vom Binding-Generator übersprungen) – dann auf
+-- ImGui_Text ausweichen. ReaImGui-ImGui_Text nimmt den String ohne
+-- Format-Argumente entgegen, die Beschreibungen enthalten sowieso kein "%".
+local text_fn = r.ImGui_TextUnformatted or r.ImGui_Text or r.ImGui_TextDisabled
+local function text(s)
+  text_fn(ctx, s)
+end
+
+-- ImGui-Farben (IM_COL32) sind 0xAABBGGRR – Alpha im HOHEN Byte, nicht im
+-- letzten (das ist das Theme-/COLORREF-Format). Die Werte unten sind zur
+-- Lesbarkeit als 0xRRGGBBAA notiert und werden per col32() umgerechnet.
 -- Stil: Dark Pastel Pink (angelehnt an die VS-Code-Themes
 -- "Huacat Pink" und "Dark Pastel Pink")
+local function col32(rgba) -- 0xRRGGBBAA -> IM_COL32 (0xAABBGGRR)
+  local r = rgba & 0xFF
+  local g = (rgba >> 8) & 0xFF
+  local b = (rgba >> 16) & 0xFF
+  local a = (rgba >> 24) & 0xFF
+  return (a << 24) | (b << 16) | (g << 8) | r
+end
+
 local THEME_UI = {
-  WindowBg        = 0x2A2128F0,
-  PopupBg         = 0x322830F2,
-  FrameBg         = 0x3A2D36FF,
-  FrameBgHovered  = 0x4A3A44FF,
-  FrameBgActive   = 0x55414EFF,
-  TitleBg         = 0x4A3040FF,
-  Button          = 0x6B4458FF,
-  ButtonHovered   = 0x7D5468FF,
-  ButtonActive    = 0x8E6180FF,
-  Header          = 0x6B445880,
-  HeaderHovered   = 0x7D546880,
-  HeaderActive    = 0x8E618090,
-  Tab             = 0x3A2D36FF,
-  TabHovered      = 0x4A3A44FF,
-  TabActive       = 0x55414EFF,
-  Text            = 0xF2DCE8FF,
-  TextDisabled    = 0x9A8492FF,
-  CheckMark       = 0xFF9EC6FF,
-  SliderGrab      = 0xD98CAAFF,
-  Border          = 0x8A5A72FF,
+  WindowBg        = col32(0x2A2128F0),
+  PopupBg         = col32(0x322830F2),
+  FrameBg         = col32(0x3A2D36FF),
+  FrameBgHovered  = col32(0x4A3A44FF),
+  FrameBgActive   = col32(0x55414EFF),
+  TitleBg         = col32(0x4A3040FF),
+  Button          = col32(0x6B4458FF),
+  ButtonHovered   = col32(0x7D5468FF),
+  ButtonActive    = col32(0x8E6180FF),
+  Header          = col32(0x6B445880),
+  HeaderHovered   = col32(0x7D546880),
+  HeaderActive    = col32(0x8E618090),
+  Tab             = col32(0x3A2D36FF),
+  TabHovered      = col32(0x4A3A44FF),
+  TabActive       = col32(0x55414EFF),
+  Text            = col32(0xF2DCE8FF),
+  TextDisabled    = col32(0x9A8492FF),
+  CheckMark       = col32(0xFF9EC6FF),
+  SliderGrab      = col32(0xD98CAAFF),
+  Border          = col32(0x8A5A72FF),
 }
 
 -- =========================================================================
@@ -430,6 +463,12 @@ local function encode_drawmode(mode, alpha, flags)
   return v
 end
 
+-- ReaImGui erwartet Combo-Items als \0-getrennten String (mit abschließendem
+-- \0), eine Lua-Tabelle wird nicht überall akzeptiert -> "string expected, got table"
+local function items_str(t)
+  return table.concat(t, "\0") .. "\0"
+end
+
 -- =========================================================================
 -- 5. Theme laden / speichern
 -- =========================================================================
@@ -464,7 +503,12 @@ local function load_theme(path)
   S.path = path
   S.lines, S.entries, S.map = {}, {}, {}
   local section = ""
-  for text in content:gmatch("([^\r\n]*)") do
+  -- Zeilen inklusive Terminator zerlegen; das angehängte "\n" sorgt dafür,
+  -- dass auch eine letzte Zeile OHNE Zeilenumbruch erfasst wird. Das Muster
+  -- allein als "([^\r\n]*)" würde dagegen an jeder \r-/\n-Position ein leeres
+  -- Match liefern und die Datei beim Speichern mit Leerzeilen aufblähen.
+  for raw in (content .. "\n"):gmatch("([^\n]*)\n") do
+    local text = (raw:gsub("\r$", "")) -- trailing \r bei CRLF strippen
     S.lines[#S.lines + 1] = { text = text, section = section }
     local idx = #S.lines
     local sec = text:match("^%[(.+)%]$")
@@ -503,16 +547,12 @@ local function count_changed()
 end
 
 local function build_content()
+  local by_line = {}
+  for _, e in ipairs(S.entries) do by_line[e.line_idx] = e end
   local out = {}
   for i, ln in ipairs(S.lines) do
-    local text = ln.text
-    for _, e in ipairs(S.entries) do
-      if e.line_idx == i then
-        text = e.key .. "=" .. e.cur
-        break
-      end
-    end
-    out[#out + 1] = text
+    local e = by_line[i]
+    out[#out + 1] = e and (e.key .. "=" .. e.cur) or ln.text
   end
   return table.concat(out, S.eol)
 end
@@ -592,8 +632,11 @@ local function store_preset_list()
 end
 
 local function preset_save(name)
+  name = name:match("^%s*(.-)%s*$") or ""
   if name == "" then S.status = "Bitte zuerst einen Preset-Namen eingeben." return end
-  if name:find(",", 1, true) then name = name:gsub(",", "_") end
+  -- Komma trennt die Namen in der ExtState-Liste, "=" und Steuerzeichen
+  -- würden das key=value-Format des Preset-Inhalts zerstören
+  name = name:gsub("[,=%c]", "_")
   local kv = {}
   for _, e in ipairs(S.entries) do
     if e.section == "color theme" then
@@ -645,19 +688,36 @@ local function set_status_changed()
 end
 
 local function entry_widget(e)
-  local label = "##" .. e.key
+  -- line_idx mit ins Label, damit doppelte Keys in der Datei keine
+  -- ImGui-ID-Kollision bekommen
+  local label = "##" .. e.key .. "@" .. e.line_idx
   local changed = false
+  -- Widgets in eine Gruppe legen, damit der Rechtsklick-Reset unten auf die
+  -- GANZE Zeile wirkt (nicht nur auf das zuletzt gezeichnete Widget)
+  I.BeginGroup(ctx)
   if e.is_drawmode then
     local mode, alpha, flags = decode_drawmode(tonumber(e.cur) or 0)
+    -- Liste deckelt, sonst baut ein kaputter Rohwert (Modus bis 65535)
+    -- eine riesige Combo auf
+    local hi = math.min(math.max(mode, 3), 31)
     local mode_names = {}
-    for i = 0, math.max(mode, 3) do
+    for i = 0, hi do
       mode_names[#mode_names + 1] = DRAWMODE_NAMES[i + 1] or ("Modus " .. i)
     end
-    local _, new_mode = I.Combo(ctx, label .. "_mode", mode, mode_names, #mode_names)
+    local cur_item = mode
+    local raw_idx = -1
+    if mode > hi then
+      -- hoher Modus hängt hinten als Roh-Eintrag dran, damit der
+      -- Combo-Index ihn nicht abschneidet
+      raw_idx = #mode_names
+      mode_names[#mode_names + 1] = "Modus " .. mode .. " (roh)"
+      cur_item = raw_idx
+    end
+    local _, new_mode = I.Combo(ctx, label .. "_mode", cur_item, items_str(mode_names), #mode_names)
+    if new_mode == raw_idx then new_mode = mode end
     I.SameLine(ctx)
     I.SetNextItemWidth(ctx, 90)
-    local _, new_alpha = I.SliderInt(ctx, label .. "_alpha", alpha, 0, 255,
-      string.format("Alpha %d", alpha))
+    local _, new_alpha = I.SliderInt(ctx, label .. "_alpha", alpha, 0, 255, "Alpha %d")
     I.SameLine(ctx)
     I.SetNextItemWidth(ctx, 50)
     local _, new_flags = I.InputInt(ctx, label .. "_flags", flags, 0, 0)
@@ -681,8 +741,13 @@ local function entry_widget(e)
   elseif e.is_int then
     local R, G, B, A, A_raw = theme_to_rgba(tonumber(e.cur) or 0)
     local _, nr, ng, nb, na = I.ColorEdit4(ctx, label, R, G, B, A)
+    local a_byte = math.floor(na * 255 + 0.5)
+    -- Alpha 255 ist deckend; REAPER speichert deckende Farben als positiven
+    -- Wert (Alpha-Byte 0). 255 wieder auf 0 zu mappen verhindert, dass beim
+    -- bloßen Anzeigen jeder deckende Wert als "geändert" markiert wird.
+    if a_byte == 255 and A_raw == 0 then a_byte = 0 end
     local v = rgba_to_theme(math.floor(nr * 255 + 0.5), math.floor(ng * 255 + 0.5),
-                            math.floor(nb * 255 + 0.5), math.floor(na * 255 + 0.5))
+                            math.floor(nb * 255 + 0.5), a_byte)
     if v ~= tonumber(e.cur) then
       e.cur = tostring(v)
       changed = true
@@ -695,6 +760,7 @@ local function entry_widget(e)
     I.TextDisabled(ctx, e.cur ~= "" and e.cur or "(leer)")
     if I.IsItemHovered(ctx) then I.SetTooltip(ctx, e.key .. " = " .. e.cur) end
   end
+  I.EndGroup(ctx)
   if changed then set_status_changed() end
   -- Rechtsklick: auf Ausgangswert zurücksetzen
   if I.IsItemClicked(ctx, 1) and e.cur ~= e.orig then
@@ -707,7 +773,7 @@ local function entry_row(e)
   I.TableNextRow(ctx)
   I.TableSetColumnIndex(ctx, 0)
   local desc = DESC[e.key] or e.key
-  I.TextUnformatted(ctx, desc)
+  text(desc)
   if I.IsItemHovered(ctx) then
     I.SetTooltip(ctx, e.key .. "\nRechtsklick auf den Wert setzt ihn zurück.")
   end
@@ -721,8 +787,14 @@ local function render_entries(list)
     return
   end
   I.BeginTable(ctx, "entries", 2)
-  I.TableSetupColumn(ctx, "Beschreibung", 0, 420)
-  I.TableSetupColumn(ctx, "Wert")
+  -- Breite/Weight darf nur gesetzt werden, wenn die Sizing-Policy explizit
+  -- deklariert ist (Spalten-Flag WidthFixed/WidthStretch oder Tabellen-
+  -- Sizing-Flag) – sonst Assert in ImGui_TableSetupColumn. Falls die
+  -- Konstante nicht auflösbar ist, lieber Breite 0 (Auto) als Crash.
+  local fixed = FLAG.TableColumnFlags_WidthFixed
+  I.TableSetupColumn(ctx, "Beschreibung", fixed or 0, fixed and 420 or 0)
+  local stretch = FLAG.TableColumnFlags_WidthStretch
+  I.TableSetupColumn(ctx, "Wert", stretch or 0)
   for _, e in ipairs(list) do
     entry_row(e)
   end
@@ -767,14 +839,25 @@ end
 
 local function top_bar()
   -- Theme-Auswahl
-  local names = {}
-  for _, tf in ipairs(S.theme_files) do names[#names + 1] = tf.name end
-  I.SetNextItemWidth(ctx, 260)
-  local changed, sel = I.Combo(ctx, "##theme", S.theme_sel, names, #names)
-  if changed then
-    S.theme_sel = sel
-    if S.theme_files[sel + 1] then load_theme(S.theme_files[sel + 1].path) end
-    r.SetExtState(EXT_SECTION, "last_theme", S.theme_files[sel + 1].name, true)
+  if #S.theme_files == 0 then
+    I.TextDisabled(ctx, "keine .ReaperTheme-Dateien im ColorThemes-Ordner")
+  else
+    -- Index clampen, sonst ist current_item außerhalb der Liste
+    if S.theme_sel < 0 then S.theme_sel = 0 end
+    if S.theme_sel >= #S.theme_files then S.theme_sel = #S.theme_files - 1 end
+    local names = {}
+    for _, tf in ipairs(S.theme_files) do names[#names + 1] = tf.name end
+    I.SetNextItemWidth(ctx, 260)
+    -- Combo-Items als \0-String, nicht als Tabelle (siehe items_str)
+    local changed, sel = I.Combo(ctx, "##theme", S.theme_sel, items_str(names), #names)
+    if changed then
+      S.theme_sel = sel
+      local tf = S.theme_files[sel + 1]
+      if tf then
+        load_theme(tf.path)
+        r.SetExtState(EXT_SECTION, "last_theme", tf.name, true)
+      end
+    end
   end
   I.SameLine(ctx)
   if I.Button(ctx, "Neu laden") and S.theme_files[S.theme_sel + 1] then
@@ -787,7 +870,7 @@ local function top_bar()
   I.SameLine(ctx)
   local n = count_changed()
   if n > 0 then
-    I.TextColored(ctx, 0xFF9EC6FF, n .. " Wert(e) geändert")
+    I.TextColored(ctx, col32(0xFF9EC6FF), n .. " Wert(e) geändert")
   else
     I.TextDisabled(ctx, "keine ungespeicherten Änderungen")
   end
@@ -797,8 +880,10 @@ local function preset_bar()
   if #S.presets == 0 then
     I.TextDisabled(ctx, "keine Presets")
   else
+    if S.preset_sel < 0 then S.preset_sel = 0 end
+    if S.preset_sel >= #S.presets then S.preset_sel = #S.presets - 1 end
     I.SetNextItemWidth(ctx, 220)
-    local changed, sel = I.Combo(ctx, "##preset", S.preset_sel, S.presets, #S.presets)
+    local changed, sel = I.Combo(ctx, "##preset", S.preset_sel, items_str(S.presets), #S.presets)
     if changed then S.preset_sel = sel end
     I.SameLine(ctx)
     if I.Button(ctx, "Anwenden") then
