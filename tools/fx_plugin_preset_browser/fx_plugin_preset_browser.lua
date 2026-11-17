@@ -694,13 +694,14 @@ local function frame()
     local vis, open = r.ImGui_Begin(ctx, "FX Preset & Parameter Browser", true)
     win_collapsed.browser = not vis  -- Begin==false heisst eingeklappt/geklippt
     if vis then
-      local _, fol = r.ImGui_Checkbox(ctx, "Fokussiertem FX folgen", follow_focused and 1 or 0)
-      follow_focused = fol == 1
+      -- ReaImGui-Checkbox liefert den Wert als boolean -> nicht mit 1 vergleichen
+      local _, fol = r.ImGui_Checkbox(ctx, "Fokussiertem FX folgen", follow_focused)
+      follow_focused = (fol == true or fol == 1)
       r.ImGui_SameLine(ctx)
-      local sp_now = show_params and 1 or 0
-      local _, sp = r.ImGui_Checkbox(ctx, "Parameter anzeigen", sp_now)
-      if sp ~= sp_now then
-        show_params = sp == 1
+      local _, sp = r.ImGui_Checkbox(ctx, "Parameter anzeigen", show_params)
+      local sp_on = (sp == true or sp == 1)
+      if sp_on ~= show_params then
+        show_params = sp_on
         r.SetExtState(EXT_SECTION, "show_params", show_params and "1" or "0", true)
       end
       r.ImGui_SameLine(ctx)
