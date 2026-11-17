@@ -349,19 +349,50 @@ local function AllowedPresets(track, fx, fxname)
   return list, cur
 end
 
+-- Fingerprint aller Parameter, um "Preset geladen, aber veraendert" zu erkennen
+local preset_fp = {}  -- "guid|fx" -> { name = <presetname>, fp = <string> }
+
+local function ParamFingerprint(track, fx)
+  local n = r.TrackFX_GetNumParams(track, fx)
+  local t = {}
+  for p = 0, n - 1 do
+    local _, v = r.TrackFX_GetParam(track, fx, p)
+    t[#t + 1] = string.format("%.5f", v or 0)
+  end
+  return table.concat(t, ",")
+end
+
+-- true, wenn gegenueber dem zuletzt geladenen Preset Parameter veraendert wurden
+local function PresetModified(track, fx, cur_preset)
+  local key = r.GetTrackGUID(track) .. "|" .. fx
+  local st = preset_fp[key]
+  if not st or st.name ~= cur_preset then
+    preset_fp[key] = { name = cur_preset, fp = ParamFingerprint(track, fx) }
+    return false
+  end
+  return ParamFingerprint(track, fx) ~= st.fp
+end
+
+local function MarkPresetLoaded(track, fx, name)
+  preset_fp[r.GetTrackGUID(track) .. "|" .. fx] = { name = name, fp = ParamFingerprint(track, fx) }
+end
+
 local function DrawPresetCombo(track, fx, label)
   local _, fxname = r.TrackFX_GetFXName(track, fx)
   local list, cur = AllowedPresets(track, fx, fxname)
   local _, cur_preset = r.TrackFX_GetPreset(track, fx)
+  local modified = PresetModified(track, fx, cur_preset)
+  local preview = (cur_preset and cur_preset ~= "" and cur_preset or "?") .. (modified and " *" or "")
   if not list or #list == 0 then
     -- trotzdem den aktuell gewaehlten Presetnamen anzeigen
-    r.ImGui_TextDisabled(ctx, (cur_preset and cur_preset ~= "") and cur_preset or "keine Presets")
+    r.ImGui_TextDisabled(ctx, (cur_preset and cur_preset ~= "") and preview or "keine Presets")
     return
   end
-  if r.ImGui_BeginCombo(ctx, label, cur_preset or "?") then
+  if r.ImGui_BeginCombo(ctx, label, preview) then
     for i, p in ipairs(list) do
       if r.ImGui_Selectable(ctx, p.name, i == cur) then
         r.TrackFX_SetPresetByIndex(track, fx, p.idx)
+        MarkPresetLoaded(track, fx, p.name)
         settings.last_used[fxname .. "\t" .. p.name] = os.time()
         SaveSettings(settings_scope)
       end
