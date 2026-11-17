@@ -439,6 +439,17 @@ local function ColIdx(name)
   return idx
 end
 
+-- halbtransparentes Hintergrund-Rechteck ueber die aktuelle Zeile
+-- (ganze Breite des Fensters), z. B. fuer die aktive Spur im Overview
+local function HighlightRow()
+  if not r.ImGui_GetWindowDrawList or not r.ImGui_DrawList_AddRectFilled then return end
+  local dl = r.ImGui_GetWindowDrawList(ctx)
+  local x, y = r.ImGui_GetCursorScreenPos(ctx)
+  local w = r.ImGui_GetWindowWidth(ctx)
+  local h = r.ImGui_GetTextLineHeight(ctx)
+  r.ImGui_DrawList_AddRectFilled(dl, x, y, x + w, y + h, 0xFFD70040)  -- Gold, Alpha 0x40 (0xRRGGBBAA)
+end
+
 -- letztes gueltiges Focus-FX merken, damit die Anzeige nicht "wegspringt",
 -- sobald das Script-Fenster selbst fokussiert ist (GetFocusedFX() == 0)
 local last_focus_track, last_focus_fx = nil, nil
@@ -584,11 +595,14 @@ local function DrawOverview()
         for f = 0, nfx - 1 do
           local _, fxname = r.TrackFX_GetFXName(track, f)
           if FXMatches(fxname) then
+            local track_active = (track == cur_track)
             if not has_row then
+              if track_active then HighlightRow() end
               r.ImGui_Text(ctx, tname)
               has_row = true
             end
-            local is_active = (track == cur_track and f == cur_fx)
+            local is_active = (track_active and f == cur_fx)
+            if track_active then HighlightRow() end
             if is_active then
               r.ImGui_PushStyleColor(ctx, ColIdx("Col_Text"), 0xFFD700FF)  -- Gold, 0xRRGGBBAA
             end
