@@ -16,6 +16,7 @@ local settings = {
   sort_mode  = "default",  -- default | az | za | newest
   last_used  = {},         -- "fxname<TAB>presetname" -> os.time()
   quick_params = "",       -- Komma-getrennte Parameter-Substrings fuer Quick-Anzeige
+  trackname_template = "{preset}",  -- Platzhalter fuer den Umbenennen-Button
 }
 
 local settings_scope = r.GetExtState(EXT_SECTION, "scope")
@@ -67,6 +68,7 @@ local function LoadSettings(scope)
   settings.sort_mode = "default"
   settings.last_used = {}
   settings.quick_params = ""
+  settings.trackname_template = "{preset}"
   if type(s) ~= "string" or s == "" then return end
   for line in s:gmatch("([^\n]*)\n?") do
     if line:find("^FILTER:") then
@@ -89,6 +91,8 @@ local function LoadSettings(scope)
       if m == "az" or m == "za" or m == "newest" or m == "default" then settings.sort_mode = m end
     elseif line:find("^QP:") then
       settings.quick_params = line:sub(#"QP:" + 1)
+    elseif line:find("^TPL:") then
+      settings.trackname_template = line:sub(#"TPL:" + 1)
     elseif line:find("^USED:") then
       local fxn, p, ts = line:sub(#"USED:" + 1):match("^([^\t]*)\t([^\t]*)\t(.*)$")
       if fxn and p then settings.last_used[fxn .. "\t" .. p] = tonumber(ts) or 0 end
@@ -97,7 +101,7 @@ local function LoadSettings(scope)
 end
 
 local function SaveSettings(settings_scope)
-  local t = { "FILTER:" .. settings.fx_filters, "SORT:" .. settings.sort_mode, "QP:" .. settings.quick_params }
+  local t = { "FILTER:" .. settings.fx_filters, "SORT:" .. settings.sort_mode, "QP:" .. settings.quick_params, "TPL:" .. settings.trackname_template }
   for fxn, presets in pairs(settings.excluded) do
     local lst = {}
     for p in pairs(presets) do table.insert(lst, p) end
@@ -382,6 +386,38 @@ local function MarkPresetLoaded(track, fx, name)
   preset_fp[r.GetTrackGUID(track) .. "|" .. fx] = { name = name, fp = ParamFingerprint(track, fx) }
 end
 
+-- formatierter Wert des ersten Parameters, dessen Name `needle` enthaelt
+-- (Substring, case-insensitive)
+local function FormatParamBySubstring(track, fx, needle)
+  local n = r.TrackFX_GetNumParams(track, fx)
+  local lower = needle:lower()
+  for p = 0, n - 1 do
+    local _, pname = r.TrackFX_GetParamName(track, fx, p)
+    if pname:lower():find(lower, 1, true) then
+      local _, norm = r.TrackFX_GetParam(track, fx, p)
+      local _, fmt = r.TrackFX_FormatParamValue(track, fx, p, norm)
+      return fmt
+    end
+  end
+  return nil
+end
+
+-- Trackname-Template aufloesen: {preset} -> Presetname,
+-- {p:Name} / {param:Name} -> formatierter Parameterwert (Substring-Match);
+-- unbekannte Platzhalter und Freitext bleiben unveraendert stehen
+local function ApplyTrackNameTemplate(track, fx, template)
+  local _, pname = r.TrackFX_GetPreset(track, fx)
+  return (template:gsub("{(.-)}", function(ph)
+    if ph == "preset" then return (pname ~= nil and pname ~= "") and pname or "?" end
+    local key = ph:match("^p%:(.+)$") or ph:match("^param%:(.+)$")
+    if key then
+      local v = FormatParamBySubstring(track, fx, key)
+      if v then return v end
+    end
+    return "{" .. ph .. "}"
+  end))
+end
+
 local function DrawPresetCombo(track, fx, label)
   local _, fxname = r.TrackFX_GetFXName(track, fx)
   local list, cur = AllowedPresets(track, fx, fxname)
@@ -439,9 +475,30 @@ local function ColIdx(name)
   return idx
 end
 
+-- halbtransparentes Hintergrund-Rechteck ueber die aktuelle Zeile
+-- (ganze Breite des Fensters), z. B. fuer die aktive Spur im Overview
+local function HighlightRow()
+  if not r.ImGui_GetWindowDrawList or not r.ImGui_DrawList_AddRectFilled then return end
+  local dl = r.ImGui_GetWindowDrawList(ctx)
+  local x, y = r.ImGui_GetCursorScreenPos(ctx)
+  local w = r.ImGui_GetWindowWidth(ctx)
+  local h = r.ImGui_GetTextLineHeight(ctx)
+  r.ImGui_DrawList_AddRectFilled(dl, x, y, x + w, y + h, 0xFFD70040)  -- Gold, Alpha 0x40 (0xRRGGBBAA)
+end
+
 -- letztes gueltiges Focus-FX merken, damit die Anzeige nicht "wegspringt",
 -- sobald das Script-Fenster selbst fokussiert ist (GetFocusedFX() == 0)
 local last_focus_track, last_focus_fx = nil, nil
+local last_sel_track = nil  -- zuletzt gesehene Spur-Auswahl (Aenderung -> Follow-Sprung)
+
+-- erstes FX einer Spur, dessen Name dem FX-Filter entspricht
+local function FirstMatchingFX(track)
+  for f = 0, r.TrackFX_GetCount(track) - 1 do
+    local _, nm = r.TrackFX_GetFXName(track, f)
+    if FXMatches(nm) then return f end
+  end
+  return nil
+end
 
 local function GetCurrentFX()
   if follow_focused then
@@ -450,10 +507,23 @@ local function GetCurrentFX()
     local retval, tr, a, b = r.GetFocusedFX()
     local fn = (b ~= nil) and b or a
     if retval == 1 and tr >= 0 then
+      -- fokussiertes FX-Fenster hat Vorrang
       local track = (tr == 0) and r.GetMasterTrack(0) or r.GetTrack(0, tr - 1)
       if track and fn >= 0 and fn < r.TrackFX_GetCount(track) then
         last_focus_track, last_focus_fx = track, fn
       end
+      local sel0 = r.GetSelectedTrack(0, 0)
+      if sel0 then last_sel_track = sel0 end
+    else
+      -- kein FX-Fenster fokussiert: auf Spur-Auswahl reagieren, damit der
+      -- Browser nicht erst nach Oeffnen des FX-Fensters zur Spur wechselt
+      local sel = r.GetSelectedTrack(0, 0)
+      if not sel and r.GetLastTouchedTrack then sel = r.GetLastTouchedTrack() end
+      if sel and sel ~= last_sel_track then
+        local f = FirstMatchingFX(sel)
+        if f then last_focus_track, last_focus_fx = sel, f end
+      end
+      last_sel_track = sel
     end
   end
   if last_focus_track and r.ValidatePtr(last_focus_track, "MediaTrack*")
@@ -584,11 +654,14 @@ local function DrawOverview()
         for f = 0, nfx - 1 do
           local _, fxname = r.TrackFX_GetFXName(track, f)
           if FXMatches(fxname) then
+            local track_active = (track == cur_track)
             if not has_row then
+              if track_active then HighlightRow() end
               r.ImGui_Text(ctx, tname)
               has_row = true
             end
-            local is_active = (track == cur_track and f == cur_fx)
+            local is_active = (track_active and f == cur_fx)
+            if track_active then HighlightRow() end
             if is_active then
               r.ImGui_PushStyleColor(ctx, ColIdx("Col_Text"), 0xFFD700FF)  -- Gold, 0xRRGGBBAA
             end
@@ -688,7 +761,17 @@ local function DrawSettings()
 
     r.ImGui_Separator(ctx)
 
-    if r.ImGui_Button(ctx, "Ausgewählte Spuren nach aktuellem Preset umbenennen") then
+    r.ImGui_Text(ctx, "Trackname-Template:")
+    local cht, vt = r.ImGui_InputTextWithHint(ctx, "##tpl", "{preset}  |  {p:azimuth}", settings.trackname_template)
+    if cht then
+      settings.trackname_template = vt
+      SaveSettings(settings_scope)
+    end
+    r.ImGui_TextDisabled(ctx, "Platzhalter: {preset} = Presetname, {p:Name} = Parameterwert (Substring, z. B. {p:azimut}). Rest = Freitext. Leer = nur Presetname.")
+
+    if r.ImGui_Button(ctx, "Ausgewählte Spuren umbenennen (Template anwenden)") then
+      local tpl = settings.trackname_template
+      if tpl:gsub("%s", "") == "" then tpl = "{preset}" end
       r.Undo_BeginBlock()
       local nsel = r.CountSelectedTracks(0)
       for si = 0, nsel - 1 do
@@ -697,18 +780,15 @@ local function DrawSettings()
           for f = 0, r.TrackFX_GetCount(tr) - 1 do
             local _, nm = r.TrackFX_GetFXName(tr, f)
             if FXMatches(nm) then
-              local _, pname = r.TrackFX_GetPreset(tr, f)
-              if pname and pname ~= "" then
-                r.GetSetMediaTrackInfo_String(tr, "P_NAME", pname, true)
-              end
+              r.GetSetMediaTrackInfo_String(tr, "P_NAME", ApplyTrackNameTemplate(tr, f, tpl), true)
               break  -- erstes passendes FX pro Spur genuegt
             end
           end
         end
       end
-      r.Undo_EndBlock("FX Preset Browser: Spuren nach Preset umbenennen", -1)
+      r.Undo_EndBlock("FX Preset Browser: Spuren nach Template umbenennen", -1)
     end
-    r.ImGui_TextDisabled(ctx, "Nimmt pro ausgewählter Spur das erste FX, das dem FX-Filter entspricht, und setzt den Spurnamen auf dessen aktuelles Preset (ein Undo-Schritt).")
+    r.ImGui_TextDisabled(ctx, "Nimmt pro ausgewählter Spur das erste FX, das dem FX-Filter entspricht, und setzt den Spurnamen auf das Template mit dessen aktuellem Preset/Parametern (ein Undo-Schritt).")
 
     r.ImGui_Separator(ctx)
 
