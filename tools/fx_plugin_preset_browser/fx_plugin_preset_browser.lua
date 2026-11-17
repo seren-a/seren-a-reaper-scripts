@@ -428,6 +428,41 @@ local function DrawPresetCombo(track, fx, label)
   end
 end
 
+-- Farbkonstante aufloesen (in manchen Builds Funktion, sonst Zahl)
+local function ColIdx(name)
+  local idx = r["ImGui_" .. name]
+  if type(idx) == "function" then idx = idx() end
+  return idx
+end
+
+-- letztes gueltiges Focus-FX merken, damit die Anzeige nicht "wegspringt",
+-- sobald das Script-Fenster selbst fokussiert ist (GetFocusedFX() == 0)
+local last_focus_track, last_focus_fx = nil, nil
+
+local function GetCurrentFX()
+  if follow_focused then
+    -- liefert (retval, tracknumber, itemnumber, fxnumber); aeltere Versionen
+    -- nur (retval, tracknumber, fxnumber) -> fxnumber ist dann nil
+    local retval, tr, a, b = r.GetFocusedFX()
+    local fn = (b ~= nil) and b or a
+    if retval == 1 and tr >= 0 then
+      local track = (tr == 0) and r.GetMasterTrack(0) or r.GetTrack(0, tr - 1)
+      if track and fn >= 0 and fn < r.TrackFX_GetCount(track) then
+        last_focus_track, last_focus_fx = track, fn
+      end
+    end
+  end
+  if last_focus_track and r.ValidatePtr(last_focus_track, "MediaTrack*")
+     and last_focus_fx < r.TrackFX_GetCount(last_focus_track) then
+    return last_focus_track, last_focus_fx
+  end
+  local track = r.GetTrack(0, selected_track_idx)
+  if track and selected_fx_idx < r.TrackFX_GetCount(track) then
+    return track, selected_fx_idx
+  end
+  return nil, nil
+end
+
 ----------------------------------------------------------------
 -- Browser-Fenster
 ----------------------------------------------------------------
@@ -501,6 +536,7 @@ end
 -- Overview-Fenster
 ----------------------------------------------------------------
 local function DrawOverview()
+  local cur_track, cur_fx = GetCurrentFX()
   if win_collapsed.overview then
     r.ImGui_SetNextWindowSize(ctx, 520, 400, r.ImGui_Cond_Always())
   else
@@ -525,6 +561,10 @@ local function DrawOverview()
               r.ImGui_Text(ctx, tname)
               has_row = true
             end
+            local is_active = (track == cur_track and f == cur_fx)
+            if is_active then
+              r.ImGui_PushStyleColor(ctx, ColIdx("Col_Text"), 0xFFD700FF)  -- Gold, 0xRRGGBBAA
+            end
             r.ImGui_PushID(ctx, i .. "_" .. f)
             r.ImGui_Indent(ctx, 12)
             r.ImGui_Text(ctx, fxname)
@@ -532,6 +572,7 @@ local function DrawOverview()
             DrawPresetCombo(track, f, "##preset")
             r.ImGui_Unindent(ctx, 12)
             r.ImGui_PopID(ctx)
+            if is_active then r.ImGui_PopStyleColor(ctx) end
           end
         end
         if has_row then r.ImGui_Separator(ctx) end
@@ -722,34 +763,6 @@ end
 ----------------------------------------------------------------
 -- Main
 ----------------------------------------------------------------
--- letztes gueltiges Focus-FX merken, damit die Anzeige nicht "wegspringt",
--- sobald das Script-Fenster selbst fokussiert ist (GetFocusedFX() == 0)
-local last_focus_track, last_focus_fx = nil, nil
-
-local function GetCurrentFX()
-  if follow_focused then
-    -- liefert (retval, tracknumber, itemnumber, fxnumber); aeltere Versionen
-    -- nur (retval, tracknumber, fxnumber) -> fxnumber ist dann nil
-    local retval, tr, a, b = r.GetFocusedFX()
-    local fn = (b ~= nil) and b or a
-    if retval == 1 and tr >= 0 then
-      local track = (tr == 0) and r.GetMasterTrack(0) or r.GetTrack(0, tr - 1)
-      if track and fn >= 0 and fn < r.TrackFX_GetCount(track) then
-        last_focus_track, last_focus_fx = track, fn
-      end
-    end
-  end
-  if last_focus_track and r.ValidatePtr(last_focus_track, "MediaTrack*")
-     and last_focus_fx < r.TrackFX_GetCount(last_focus_track) then
-    return last_focus_track, last_focus_fx
-  end
-  local track = r.GetTrack(0, selected_track_idx)
-  if track and selected_fx_idx < r.TrackFX_GetCount(track) then
-    return track, selected_fx_idx
-  end
-  return nil, nil
-end
-
 local function frame()
   local track, fx = GetCurrentFX()
   ApplyTheme()
