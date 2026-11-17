@@ -15,6 +15,7 @@ local settings = {
   rules      = {},
   sort_mode  = "default",  -- default | az | za | newest
   last_used  = {},         -- "fxname<TAB>presetname" -> os.time()
+  quick_params = "",       -- Komma-getrennte Parameter-Substrings fuer Quick-Anzeige
 }
 
 local settings_scope = r.GetExtState(EXT_SECTION, "scope")
@@ -65,6 +66,7 @@ local function LoadSettings(scope)
   settings.rules = {}
   settings.sort_mode = "default"
   settings.last_used = {}
+  settings.quick_params = ""
   if type(s) ~= "string" or s == "" then return end
   for line in s:gmatch("([^\n]*)\n?") do
     if line:find("^FILTER:") then
@@ -85,6 +87,8 @@ local function LoadSettings(scope)
     elseif line:find("^SORT:") then
       local m = line:sub(#"SORT:" + 1)
       if m == "az" or m == "za" or m == "newest" or m == "default" then settings.sort_mode = m end
+    elseif line:find("^QP:") then
+      settings.quick_params = line:sub(#"QP:" + 1)
     elseif line:find("^USED:") then
       local fxn, p, ts = line:sub(#"USED:" + 1):match("^([^\t]*)\t([^\t]*)\t(.*)$")
       if fxn and p then settings.last_used[fxn .. "\t" .. p] = tonumber(ts) or 0 end
@@ -93,7 +97,7 @@ local function LoadSettings(scope)
 end
 
 local function SaveSettings(settings_scope)
-  local t = { "FILTER:" .. settings.fx_filters, "SORT:" .. settings.sort_mode }
+  local t = { "FILTER:" .. settings.fx_filters, "SORT:" .. settings.sort_mode, "QP:" .. settings.quick_params }
   for fxn, presets in pairs(settings.excluded) do
     local lst = {}
     for p in pairs(presets) do table.insert(lst, p) end
@@ -121,6 +125,7 @@ local ctx
 local show_browser   = true
 local show_overview  = true
 local show_settings  = false
+local win_collapsed  = {}  -- merkt eingeklappte Fenster (Re-Expand -> Groesse restaurieren)
 local follow_focused = true
 local selected_track_idx = 0
 local selected_fx_idx    = 0
@@ -129,6 +134,7 @@ local preset_cache    = {}
 local excl_sel_fxname = ""
 local excl_drag       = nil  -- Drag-Malen in Settings: Zielwert true/false
 local show_params     = r.GetExtState(EXT_SECTION, "show_params") == "1"
+local apply_to_all    = r.GetExtState(EXT_SECTION, "apply_to_all") == "1"
 ----------------------------------------------------------------
 -- Themes
 ----------------------------------------------------------------
@@ -250,15 +256,28 @@ local function GetPresetNames(track, fx)
   if preset_cache[key] then return preset_cache[key].names, count end
 
   -- Namen durch einmaliges Durchschalten ermitteln (ein Undo-Schritt,
-  -- danach wird das urspruengliche Preset wiederhergestellt)
+  -- danach wird der urspruengliche Zustand wiederhergestellt)
   local names = {}
+  -- Parameter-Schnappschuss: steht der FX gerade NICHT exakt auf einem
+  -- Preset (cur_idx < 0), wird danach der veraenderte Zustand per
+  -- SetParam restauriert - sonst wuerde ein Preset aufgezwungen
+  local nparams = r.TrackFX_GetNumParams(track, fx)
+  local snapshot = {}
+  for p = 0, nparams - 1 do
+    local _, v = r.TrackFX_GetParam(track, fx, p)
+    snapshot[p] = v
+  end
   r.Undo_BeginBlock()
   for i = 0, count - 1 do
     if not r.TrackFX_SetPresetByIndex(track, fx, i) then break end
     local _, name = r.TrackFX_GetPreset(track, fx)
     names[i + 1] = name or ""
   end
-  if cur_idx and cur_idx >= 0 then r.TrackFX_SetPresetByIndex(track, fx, cur_idx) end
+  if cur_idx and cur_idx >= 0 then
+    r.TrackFX_SetPresetByIndex(track, fx, cur_idx)
+  else
+    for p = 0, nparams - 1 do r.TrackFX_SetParam(track, fx, p, snapshot[p]) end
+  end
   r.Undo_EndBlock("FX Preset Browser: Presetnamen lesen", -1)
   if #names == 0 then return nil, 0 end
   preset_cache[key] = { names = names }
@@ -335,34 +354,126 @@ local function AllowedPresets(track, fx, fxname)
   return list, cur
 end
 
+-- Fingerprint aller Parameter, um "Preset geladen, aber veraendert" zu erkennen
+local preset_fp = {}  -- "guid|fx" -> { name = <presetname>, fp = <string> }
+
+local function ParamFingerprint(track, fx)
+  local n = r.TrackFX_GetNumParams(track, fx)
+  local t = {}
+  for p = 0, n - 1 do
+    local _, v = r.TrackFX_GetParam(track, fx, p)
+    t[#t + 1] = string.format("%.5f", v or 0)
+  end
+  return table.concat(t, ",")
+end
+
+-- true, wenn gegenueber dem zuletzt geladenen Preset Parameter veraendert wurden
+local function PresetModified(track, fx, cur_preset)
+  local key = r.GetTrackGUID(track) .. "|" .. fx
+  local st = preset_fp[key]
+  if not st or st.name ~= cur_preset then
+    preset_fp[key] = { name = cur_preset, fp = ParamFingerprint(track, fx) }
+    return false
+  end
+  return ParamFingerprint(track, fx) ~= st.fp
+end
+
+local function MarkPresetLoaded(track, fx, name)
+  preset_fp[r.GetTrackGUID(track) .. "|" .. fx] = { name = name, fp = ParamFingerprint(track, fx) }
+end
+
 local function DrawPresetCombo(track, fx, label)
   local _, fxname = r.TrackFX_GetFXName(track, fx)
   local list, cur = AllowedPresets(track, fx, fxname)
   local _, cur_preset = r.TrackFX_GetPreset(track, fx)
+  local modified = PresetModified(track, fx, cur_preset)
+  local preview = (cur_preset and cur_preset ~= "" and cur_preset or "?") .. (modified and " *" or "")
   if not list or #list == 0 then
     -- trotzdem den aktuell gewaehlten Presetnamen anzeigen
-    r.ImGui_TextDisabled(ctx, (cur_preset and cur_preset ~= "") and cur_preset or "keine Presets")
+    r.ImGui_TextDisabled(ctx, (cur_preset and cur_preset ~= "") and preview or "keine Presets")
     return
   end
-  if r.ImGui_BeginCombo(ctx, label, cur_preset or "?") then
+  if r.ImGui_BeginCombo(ctx, label, preview) then
     for i, p in ipairs(list) do
       if r.ImGui_Selectable(ctx, p.name, i == cur) then
         r.TrackFX_SetPresetByIndex(track, fx, p.idx)
+        MarkPresetLoaded(track, fx, p.name)
         settings.last_used[fxname .. "\t" .. p.name] = os.time()
         SaveSettings(settings_scope)
+        if apply_to_all then
+          local n = 0
+          for ti = 0, r.GetNumTracks() - 1 do
+            local tr = r.GetTrack(0, ti)
+            for ff = 0, r.TrackFX_GetCount(tr) - 1 do
+              local _, nm = r.TrackFX_GetFXName(tr, ff)
+              if nm == fxname then n = n + 1 end
+            end
+          end
+          local ok = r.ShowMessageBox(
+            "Sicher? " .. n .. " Instanzen von '" .. fxname .. "' auf Preset '" .. p.name .. "' setzen?",
+            "Alle Instanzen uebernehmen", 4)  -- 4 = MB_YESNO
+          if ok == 6 then  -- IDYES
+            r.Undo_BeginBlock()
+            for ti = 0, r.GetNumTracks() - 1 do
+              local tr = r.GetTrack(0, ti)
+              for ff = 0, r.TrackFX_GetCount(tr) - 1 do
+                local _, nm = r.TrackFX_GetFXName(tr, ff)
+                if nm == fxname and not (tr == track and ff == fx) then
+                  r.TrackFX_SetPresetByIndex(tr, ff, p.idx)
+                end
+              end
+            end
+            r.Undo_EndBlock("FX Preset Browser: Preset auf alle Instanzen setzen", -1)
+          end
+        end
       end
     end
     r.ImGui_EndCombo(ctx)
   end
 end
 
+-- Farbkonstante aufloesen (in manchen Builds Funktion, sonst Zahl)
+local function ColIdx(name)
+  local idx = r["ImGui_" .. name]
+  if type(idx) == "function" then idx = idx() end
+  return idx
+end
+
+-- letztes gueltiges Focus-FX merken, damit die Anzeige nicht "wegspringt",
+-- sobald das Script-Fenster selbst fokussiert ist (GetFocusedFX() == 0)
+local last_focus_track, last_focus_fx = nil, nil
+
+local function GetCurrentFX()
+  if follow_focused then
+    -- liefert (retval, tracknumber, itemnumber, fxnumber); aeltere Versionen
+    -- nur (retval, tracknumber, fxnumber) -> fxnumber ist dann nil
+    local retval, tr, a, b = r.GetFocusedFX()
+    local fn = (b ~= nil) and b or a
+    if retval == 1 and tr >= 0 then
+      local track = (tr == 0) and r.GetMasterTrack(0) or r.GetTrack(0, tr - 1)
+      if track and fn >= 0 and fn < r.TrackFX_GetCount(track) then
+        last_focus_track, last_focus_fx = track, fn
+      end
+    end
+  end
+  if last_focus_track and r.ValidatePtr(last_focus_track, "MediaTrack*")
+     and last_focus_fx < r.TrackFX_GetCount(last_focus_track) then
+    return last_focus_track, last_focus_fx
+  end
+  local track = r.GetTrack(0, selected_track_idx)
+  if track and selected_fx_idx < r.TrackFX_GetCount(track) then
+    return track, selected_fx_idx
+  end
+  return nil, nil
+end
+
 ----------------------------------------------------------------
 -- Browser-Fenster
 ----------------------------------------------------------------
-local function ParamWidget(track, fx, param)
+local function ParamWidget(track, fx, param, ignore_filter)
   local _, name = r.TrackFX_GetParamName(track, fx, param)
   local pf = param_filter:lower()
-  if pf ~= "" and not name:lower():find(pf, 1, true) then return end
+  if not ignore_filter and pf ~= "" and not name:lower():find(pf, 1, true) then return end
 
   local _, norm = r.TrackFX_GetParam(track, fx, param)
   local rv_step, step, _, _, istoggle = r.TrackFX_GetParameterStepSizes(track, fx, param)
@@ -406,6 +517,29 @@ local function DrawBrowser(track, fx)
   DrawPresetCombo(track, fx, "##preset")
   r.ImGui_Separator(ctx)
 
+  -- Quick-Parameter (Settings) immer sichtbar, auch ohne Parameter-Toggle
+  local qp = settings.quick_params:lower()
+  if qp:gsub("%s", "") ~= "" then
+    local nparams_q = r.TrackFX_GetNumParams(track, fx)
+    local shown_q = false
+    for p = 0, nparams_q - 1 do
+      local _, pname = r.TrackFX_GetParamName(track, fx, p)
+      for term in qp:gmatch("[^,]+") do
+        term = term:gsub("^%s+", ""):gsub("%s+$", "")
+        if term ~= "" and pname:lower():find(term, 1, true) then
+          if not shown_q then
+            r.ImGui_Text(ctx, "Quick-Parameter:")
+            r.ImGui_Separator(ctx)
+            shown_q = true
+          end
+          ParamWidget(track, fx, p, true)
+          break
+        end
+      end
+    end
+    if shown_q then r.ImGui_Separator(ctx) end
+  end
+
   -- Parameter erst auf expliziten Wunsch anzeigen (Presets laden sonst
   -- mitten im Rendern die Parameter um)
   if not show_params then
@@ -429,8 +563,14 @@ end
 -- Overview-Fenster
 ----------------------------------------------------------------
 local function DrawOverview()
-  r.ImGui_SetNextWindowSize(ctx, 520, 400, r.ImGui_Cond_FirstUseEver())
+  local cur_track, cur_fx = GetCurrentFX()
+  if win_collapsed.overview then
+    r.ImGui_SetNextWindowSize(ctx, 520, 400, r.ImGui_Cond_Always())
+  else
+    r.ImGui_SetNextWindowSize(ctx, 520, 400, r.ImGui_Cond_FirstUseEver())
+  end
   local vis, open = r.ImGui_Begin(ctx, "Preset Overview", true)
+  win_collapsed.overview = not vis  -- Begin==false heisst eingeklappt/geklippt
   if vis then
     r.ImGui_TextDisabled(ctx, "FX-Filter: " .. settings.fx_filters)
     r.ImGui_Separator(ctx)
@@ -448,6 +588,10 @@ local function DrawOverview()
               r.ImGui_Text(ctx, tname)
               has_row = true
             end
+            local is_active = (track == cur_track and f == cur_fx)
+            if is_active then
+              r.ImGui_PushStyleColor(ctx, ColIdx("Col_Text"), 0xFFD700FF)  -- Gold, 0xRRGGBBAA
+            end
             r.ImGui_PushID(ctx, i .. "_" .. f)
             r.ImGui_Indent(ctx, 12)
             r.ImGui_Text(ctx, fxname)
@@ -455,14 +599,15 @@ local function DrawOverview()
             DrawPresetCombo(track, f, "##preset")
             r.ImGui_Unindent(ctx, 12)
             r.ImGui_PopID(ctx)
+            if is_active then r.ImGui_PopStyleColor(ctx) end
           end
         end
         if has_row then r.ImGui_Separator(ctx) end
       end
       r.ImGui_EndChild(ctx)
     end
+    r.ImGui_End(ctx)  -- ReaImGui: nur wenn Begin true lieferte (sonst "End() too many times")
   end
-  r.ImGui_End(ctx)  -- immer aufrufen, auch wenn Begin false liefert (z. B. eingeklappt)
   show_overview = open
 end
 
@@ -498,6 +643,16 @@ local function DrawSettings()
 
     r.ImGui_Separator(ctx)
 
+    r.ImGui_Text(ctx, "Quick-Parameter (Komma-getrennt, Substring, z. B. 'azimut, direct gain'):")
+    local chq, vq = r.ImGui_InputText(ctx, "##quickparams", settings.quick_params)
+    if chq then
+      settings.quick_params = vq
+      SaveSettings(settings_scope)
+    end
+    r.ImGui_TextDisabled(ctx, "Diese Parameter sind im Browser immer sichtbar (auch ohne 'Parameter anzeigen').")
+
+    r.ImGui_Separator(ctx)
+
     r.ImGui_Text(ctx, "Theme:")
     r.ImGui_SameLine(ctx)
     if r.ImGui_BeginCombo(ctx, "##theme", current_theme) then
@@ -530,6 +685,30 @@ local function DrawSettings()
     end
     r.ImGui_SameLine(ctx)
     r.ImGui_TextDisabled(ctx, settings_scope == "project" and "(Projekt ohne eigene Daten nutzt die globalen)" or "")
+
+    r.ImGui_Separator(ctx)
+
+    if r.ImGui_Button(ctx, "Ausgewählte Spuren nach aktuellem Preset umbenennen") then
+      r.Undo_BeginBlock()
+      local nsel = r.CountSelectedTracks(0)
+      for si = 0, nsel - 1 do
+        local tr = r.GetSelectedTrack(0, si)
+        if tr then
+          for f = 0, r.TrackFX_GetCount(tr) - 1 do
+            local _, nm = r.TrackFX_GetFXName(tr, f)
+            if FXMatches(nm) then
+              local _, pname = r.TrackFX_GetPreset(tr, f)
+              if pname and pname ~= "" then
+                r.GetSetMediaTrackInfo_String(tr, "P_NAME", pname, true)
+              end
+              break  -- erstes passendes FX pro Spur genuegt
+            end
+          end
+        end
+      end
+      r.Undo_EndBlock("FX Preset Browser: Spuren nach Preset umbenennen", -1)
+    end
+    r.ImGui_TextDisabled(ctx, "Nimmt pro ausgewählter Spur das erste FX, das dem FX-Filter entspricht, und setzt den Spurnamen auf dessen aktuelles Preset (ein Undo-Schritt).")
 
     r.ImGui_Separator(ctx)
 
@@ -637,58 +816,45 @@ local function DrawSettings()
       table.insert(settings.rules, { pattern = "", allowed = "" })
     end
     r.ImGui_TextDisabled(ctx, 'Beispiel: Pattern "VO", erlaubt "Room A,Room B".')
+    r.ImGui_End(ctx)  -- ReaImGui: nur wenn Begin true lieferte (sonst "End() too many times")
   end
-  r.ImGui_End(ctx)  -- immer aufrufen, auch wenn Begin false liefert (z. B. eingeklappt)
   show_settings = open
 end
 
 ----------------------------------------------------------------
 -- Main
 ----------------------------------------------------------------
--- letztes gueltiges Focus-FX merken, damit die Anzeige nicht "wegspringt",
--- sobald das Script-Fenster selbst fokussiert ist (GetFocusedFX() == 0)
-local last_focus_track, last_focus_fx = nil, nil
-
-local function GetCurrentFX()
-  if follow_focused then
-    -- liefert (retval, tracknumber, itemnumber, fxnumber); aeltere Versionen
-    -- nur (retval, tracknumber, fxnumber) -> fxnumber ist dann nil
-    local retval, tr, a, b = r.GetFocusedFX()
-    local fn = (b ~= nil) and b or a
-    if retval == 1 and tr >= 0 then
-      local track = (tr == 0) and r.GetMasterTrack(0) or r.GetTrack(0, tr - 1)
-      if track and fn >= 0 and fn < r.TrackFX_GetCount(track) then
-        last_focus_track, last_focus_fx = track, fn
-      end
-    end
-  end
-  if last_focus_track and r.ValidatePtr(last_focus_track, "MediaTrack*")
-     and last_focus_fx < r.TrackFX_GetCount(last_focus_track) then
-    return last_focus_track, last_focus_fx
-  end
-  local track = r.GetTrack(0, selected_track_idx)
-  if track and selected_fx_idx < r.TrackFX_GetCount(track) then
-    return track, selected_fx_idx
-  end
-  return nil, nil
-end
-
 local function frame()
   local track, fx = GetCurrentFX()
   ApplyTheme()
 
   if show_browser then
-    r.ImGui_SetNextWindowSize(ctx, 420, 500, r.ImGui_Cond_FirstUseEver())
+    -- ReaImGui poppt eingeklappte Fenster von selbst; beim Wiederaufklappen
+    -- waere die Hoehe sonst 1px -> einmalig Cond_Always, sonst FirstUseEver
+    if win_collapsed.browser then
+      r.ImGui_SetNextWindowSize(ctx, 420, 500, r.ImGui_Cond_Always())
+    else
+      r.ImGui_SetNextWindowSize(ctx, 420, 500, r.ImGui_Cond_FirstUseEver())
+    end
     local vis, open = r.ImGui_Begin(ctx, "FX Preset & Parameter Browser", true)
+    win_collapsed.browser = not vis  -- Begin==false heisst eingeklappt/geklippt
     if vis then
-      local _, fol = r.ImGui_Checkbox(ctx, "Fokussiertem FX folgen", follow_focused and 1 or 0)
-      follow_focused = fol == 1
+      -- ReaImGui-Checkbox liefert den Wert als boolean -> nicht mit 1 vergleichen
+      local _, fol = r.ImGui_Checkbox(ctx, "Fokussiertem FX folgen", follow_focused)
+      follow_focused = (fol == true or fol == 1)
       r.ImGui_SameLine(ctx)
-      local sp_now = show_params and 1 or 0
-      local _, sp = r.ImGui_Checkbox(ctx, "Parameter anzeigen", sp_now)
-      if sp ~= sp_now then
-        show_params = sp == 1
+      local _, sp = r.ImGui_Checkbox(ctx, "Parameter anzeigen", show_params)
+      local sp_on = (sp == true or sp == 1)
+      if sp_on ~= show_params then
+        show_params = sp_on
         r.SetExtState(EXT_SECTION, "show_params", show_params and "1" or "0", true)
+      end
+      r.ImGui_SameLine(ctx)
+      local _, aa = r.ImGui_Checkbox(ctx, "Auf alle Instanzen anwenden", apply_to_all)
+      local aa_on = (aa == true or aa == 1)
+      if aa_on ~= apply_to_all then
+        apply_to_all = aa_on
+        r.SetExtState(EXT_SECTION, "apply_to_all", apply_to_all and "1" or "0", true)
       end
       r.ImGui_SameLine(ctx)
       if r.ImGui_Button(ctx, "Settings") then
@@ -704,8 +870,8 @@ local function frame()
       else
         r.ImGui_TextDisabled(ctx, "Kein FX im Fokus / ausgewaehlt.")
       end
+      r.ImGui_End(ctx)  -- ReaImGui: nur wenn Begin true lieferte (sonst "End() too many times")
     end
-    r.ImGui_End(ctx)  -- immer aufrufen, auch wenn Begin false liefert (z. B. eingeklappt)
     show_browser = open
   end
 

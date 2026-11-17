@@ -32,6 +32,15 @@ ReaScript (Lua) für REAPER mit [ReaImGui](https://github.com/cfillion/reaimgui)
 - **Sortierung der Presetliste:** wie gehabt (Preset-Reihenfolge), A-Z, Z-A, neueste zuerst (zuletzt verwendete Presets; wird beim Auswählen in einem Dropdown getrackt) – gilt für die Settings-Liste **und** alle Preset-Dropdowns in Browser/Overview
 - **Track-Regeln:** Erste Regel, deren Pattern im Tracknamen vorkommt, gewinnt. Erlaubte Presets als Komma-Liste, leer = alle.
 
+
+### Ergibt seit dem Wishlist-Update:
+- Preset-Dropdown zeigt "Name *", wenn Parameter gegenueber dem geladenen Preset veraendert (aber nicht gespeichert) sind
+- Haekchen "Auf alle Instanzen anwenden": Preset-Auswahl mit Sicherheits-Prompt (Sicher? N Instanzen ...) setzt das Preset auf alle FX-Instanzen mit gleichem Namen (ein Undo-Schritt)
+- Aktiver FX-Slot wird im Overview gold gehighlightet
+- Settings-Button "Ausgewählte Spuren nach aktuellem Preset umbenennen" (erstes FX pro Spur, das dem Filter entspricht; ein Undo-Schritt)
+- Quick-Parameter-Feld in den Settings (z. B. azimut, direct gain): passende Parameter sind im Browser immer sichtbar, auch ohne Parameter anzeigen
+- Enumeration der Presetnamen setzt veraenderte FX (cur_idx < 0) nicht mehr zurueck, sondern restauriert den Parameter-Zustand
+
 ## Bekannte Grenzen
 
 - Presetnamen werden beim ersten Zugriff durch einmaliges Durchschalten ermittelt und gecacht (bei sehr großen Preset-Bibliotheken dauert der erste Aufbau etwas)
