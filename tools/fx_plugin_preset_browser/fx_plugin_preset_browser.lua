@@ -359,7 +359,7 @@ local function AllowedPresets(track, fx, fxname)
 end
 
 -- Fingerprint aller Parameter, um "Preset geladen, aber veraendert" zu erkennen
-local preset_fp = {}  -- "guid|fx" -> { name = <presetname>, fp = <string> }
+local preset_fp = {}  -- "guid|fx" -> { name = <presetname>, idx = <presetindex>, fp = <string> }
 
 local function ParamFingerprint(track, fx)
   local n = r.TrackFX_GetNumParams(track, fx)
@@ -371,19 +371,34 @@ local function ParamFingerprint(track, fx)
   return table.concat(t, ",")
 end
 
--- true, wenn gegenueber dem zuletzt geladenen Preset Parameter veraendert wurden
-local function PresetModified(track, fx, cur_preset)
+-- liefert (presetname, modified).
+-- WICHTIG: Sobald ein Parameter veraendert wird, meldet REAPER cur_idx < 0
+-- und TrackFX_GetPreset liefert "" (nicht mehr den Presetnamen). Deshalb
+-- wird der zuletzt geladene Presetname ueber den Preset-Index rekonstruiert:
+-- bei cur_idx >= 0 mit neuem Index wurde ein Preset geladen (Fingerprint
+-- wird neu verankert), bei cur_idx < 0 wird der Fingerprint mit dem letzten
+-- bekannten verglichen -> modified.
+local function PresetState(track, fx)
   local key = r.GetTrackGUID(track) .. "|" .. fx
+  local cur_idx = r.TrackFX_GetPresetIndex(track, fx)
   local st = preset_fp[key]
-  if not st or st.name ~= cur_preset then
-    preset_fp[key] = { name = cur_preset, fp = ParamFingerprint(track, fx) }
-    return false
+  if cur_idx >= 0 then
+    if not st or st.idx ~= cur_idx then
+      local _, name = r.TrackFX_GetPreset(track, fx)
+      preset_fp[key] = { name = name or "", idx = cur_idx, fp = ParamFingerprint(track, fx) }
+      return name or "", false
+    end
+    return st.name, ParamFingerprint(track, fx) ~= st.fp
   end
-  return ParamFingerprint(track, fx) ~= st.fp
+  -- cur_idx < 0: veraenderter Zustand, Presetname vom letzten Laden nehmen
+  if st then return st.name, ParamFingerprint(track, fx) ~= st.fp end
+  local _, name = r.TrackFX_GetPreset(track, fx)
+  return name or "", false
 end
 
 local function MarkPresetLoaded(track, fx, name)
-  preset_fp[r.GetTrackGUID(track) .. "|" .. fx] = { name = name, fp = ParamFingerprint(track, fx) }
+  local cur_idx = r.TrackFX_GetPresetIndex(track, fx)
+  preset_fp[r.GetTrackGUID(track) .. "|" .. fx] = { name = name, idx = cur_idx, fp = ParamFingerprint(track, fx) }
 end
 
 -- formatierter Wert des ersten Parameters, dessen Name `needle` enthaelt
@@ -421,9 +436,8 @@ end
 local function DrawPresetCombo(track, fx, label)
   local _, fxname = r.TrackFX_GetFXName(track, fx)
   local list, cur = AllowedPresets(track, fx, fxname)
-  local _, cur_preset = r.TrackFX_GetPreset(track, fx)
-  local modified = PresetModified(track, fx, cur_preset)
-  local preview = (cur_preset and cur_preset ~= "" and cur_preset or "?") .. (modified and " *" or "")
+  local cur_preset, modified = PresetState(track, fx)
+  local preview = (cur_preset ~= "" and cur_preset or "?") .. (modified and " *" or "")
   if not list or #list == 0 then
     -- trotzdem den aktuell gewaehlten Presetnamen anzeigen
     r.ImGui_TextDisabled(ctx, (cur_preset and cur_preset ~= "") and preview or "keine Presets")
