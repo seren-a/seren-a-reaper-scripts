@@ -651,6 +651,30 @@ local function DrawSettings()
 
     r.ImGui_Separator(ctx)
 
+    if r.ImGui_Button(ctx, "Ausgewählte Spuren nach aktuellem Preset umbenennen") then
+      r.Undo_BeginBlock()
+      local nsel = r.CountSelectedTracks(0)
+      for si = 0, nsel - 1 do
+        local tr = r.GetSelectedTrack(0, si)
+        if tr then
+          for f = 0, r.TrackFX_GetCount(tr) - 1 do
+            local _, nm = r.TrackFX_GetFXName(tr, f)
+            if FXMatches(nm) then
+              local _, pname = r.TrackFX_GetPreset(tr, f)
+              if pname and pname ~= "" then
+                r.GetSetMediaTrackInfo_String(tr, "P_NAME", pname, true)
+              end
+              break  -- erstes passendes FX pro Spur genuegt
+            end
+          end
+        end
+      end
+      r.Undo_EndBlock("FX Preset Browser: Spuren nach Preset umbenennen", -1)
+    end
+    r.ImGui_TextDisabled(ctx, "Nimmt pro ausgewählter Spur das erste FX, das dem FX-Filter entspricht, und setzt den Spurnamen auf dessen aktuelles Preset (ein Undo-Schritt).")
+
+    r.ImGui_Separator(ctx)
+
     r.ImGui_Text(ctx, "Presets ausschliessen (pro Plugin):")
     local names = CollectMatchingFXNames()
     if #names == 0 then
