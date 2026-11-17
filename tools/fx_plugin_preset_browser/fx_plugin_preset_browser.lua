@@ -130,6 +130,7 @@ local preset_cache    = {}
 local excl_sel_fxname = ""
 local excl_drag       = nil  -- Drag-Malen in Settings: Zielwert true/false
 local show_params     = r.GetExtState(EXT_SECTION, "show_params") == "1"
+local apply_to_all    = r.GetExtState(EXT_SECTION, "apply_to_all") == "1"
 ----------------------------------------------------------------
 -- Themes
 ----------------------------------------------------------------
@@ -395,6 +396,32 @@ local function DrawPresetCombo(track, fx, label)
         MarkPresetLoaded(track, fx, p.name)
         settings.last_used[fxname .. "\t" .. p.name] = os.time()
         SaveSettings(settings_scope)
+        if apply_to_all then
+          local n = 0
+          for ti = 0, r.GetNumTracks() - 1 do
+            local tr = r.GetTrack(0, ti)
+            for ff = 0, r.TrackFX_GetCount(tr) - 1 do
+              local _, nm = r.TrackFX_GetFXName(tr, ff)
+              if nm == fxname then n = n + 1 end
+            end
+          end
+          local ok = r.ShowMessageBox(
+            "Sicher? " .. n .. " Instanzen von '" .. fxname .. "' auf Preset '" .. p.name .. "' setzen?",
+            "Alle Instanzen uebernehmen", 4)  -- 4 = MB_YESNO
+          if ok == 6 then  -- IDYES
+            r.Undo_BeginBlock()
+            for ti = 0, r.GetNumTracks() - 1 do
+              local tr = r.GetTrack(0, ti)
+              for ff = 0, r.TrackFX_GetCount(tr) - 1 do
+                local _, nm = r.TrackFX_GetFXName(tr, ff)
+                if nm == fxname and not (tr == track and ff == fx) then
+                  r.TrackFX_SetPresetByIndex(tr, ff, p.idx)
+                end
+              end
+            end
+            r.Undo_EndBlock("FX Preset Browser: Preset auf alle Instanzen setzen", -1)
+          end
+        end
       end
     end
     r.ImGui_EndCombo(ctx)
@@ -747,6 +774,13 @@ local function frame()
       if sp_on ~= show_params then
         show_params = sp_on
         r.SetExtState(EXT_SECTION, "show_params", show_params and "1" or "0", true)
+      end
+      r.ImGui_SameLine(ctx)
+      local _, aa = r.ImGui_Checkbox(ctx, "Auf alle Instanzen anwenden", apply_to_all)
+      local aa_on = (aa == true or aa == 1)
+      if aa_on ~= apply_to_all then
+        apply_to_all = aa_on
+        r.SetExtState(EXT_SECTION, "apply_to_all", apply_to_all and "1" or "0", true)
       end
       r.ImGui_SameLine(ctx)
       if r.ImGui_Button(ctx, "Settings") then
