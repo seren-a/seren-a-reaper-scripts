@@ -36,7 +36,7 @@ ReaScript (Lua) für REAPER mit [ReaImGui](https://github.com/cfillion/reaimgui)
 
 
 ### Ergibt seit dem Wishlist-Update:
-- Preset-Dropdown zeigt "Name *", wenn Parameter gegenueber dem geladenen Preset veraendert (aber nicht gespeichert) sind
+- Preset-Dropdown zeigt "Name *", wenn Parameter gegenueber dem geladenen Preset veraendert (aber nicht gespeichert) sind – auch wenn direkt in REAPER am FX gedreht wurde (dann meldet REAPER cur_idx -1 / leeren Presetnamen, der Name wird aus dem letzten Preset rekonstruiert)
 - Haekchen "Auf alle Instanzen anwenden": Preset-Auswahl mit Sicherheits-Prompt (Sicher? N Instanzen ...) setzt das Preset auf alle FX-Instanzen mit gleichem Namen (ein Undo-Schritt)
 - Aktiver FX-Slot wird im Overview gold gehighlightet, die gesamte aktive Spur zusätzlich per Hintergrund-Rechteck
 - "Fokussiertem FX folgen" reagiert auch auf die Spur-Auswahl (erstes FX mit Filter); fokussiertes FX-Fenster hat Vorrang
