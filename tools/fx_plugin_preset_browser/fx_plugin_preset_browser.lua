@@ -15,6 +15,7 @@ local settings = {
   rules      = {},
   sort_mode  = "default",  -- default | az | za | newest
   last_used  = {},         -- "fxname<TAB>presetname" -> os.time()
+  quick_params = "",       -- Komma-getrennte Parameter-Substrings fuer Quick-Anzeige
 }
 
 local settings_scope = r.GetExtState(EXT_SECTION, "scope")
@@ -65,6 +66,7 @@ local function LoadSettings(scope)
   settings.rules = {}
   settings.sort_mode = "default"
   settings.last_used = {}
+  settings.quick_params = ""
   if type(s) ~= "string" or s == "" then return end
   for line in s:gmatch("([^\n]*)\n?") do
     if line:find("^FILTER:") then
@@ -85,6 +87,8 @@ local function LoadSettings(scope)
     elseif line:find("^SORT:") then
       local m = line:sub(#"SORT:" + 1)
       if m == "az" or m == "za" or m == "newest" or m == "default" then settings.sort_mode = m end
+    elseif line:find("^QP:") then
+      settings.quick_params = line:sub(#"QP:" + 1)
     elseif line:find("^USED:") then
       local fxn, p, ts = line:sub(#"USED:" + 1):match("^([^\t]*)\t([^\t]*)\t(.*)$")
       if fxn and p then settings.last_used[fxn .. "\t" .. p] = tonumber(ts) or 0 end
@@ -93,7 +97,7 @@ local function LoadSettings(scope)
 end
 
 local function SaveSettings(settings_scope)
-  local t = { "FILTER:" .. settings.fx_filters, "SORT:" .. settings.sort_mode }
+  local t = { "FILTER:" .. settings.fx_filters, "SORT:" .. settings.sort_mode, "QP:" .. settings.quick_params }
   for fxn, presets in pairs(settings.excluded) do
     local lst = {}
     for p in pairs(presets) do table.insert(lst, p) end
@@ -466,10 +470,10 @@ end
 ----------------------------------------------------------------
 -- Browser-Fenster
 ----------------------------------------------------------------
-local function ParamWidget(track, fx, param)
+local function ParamWidget(track, fx, param, ignore_filter)
   local _, name = r.TrackFX_GetParamName(track, fx, param)
   local pf = param_filter:lower()
-  if pf ~= "" and not name:lower():find(pf, 1, true) then return end
+  if not ignore_filter and pf ~= "" and not name:lower():find(pf, 1, true) then return end
 
   local _, norm = r.TrackFX_GetParam(track, fx, param)
   local rv_step, step, _, _, istoggle = r.TrackFX_GetParameterStepSizes(track, fx, param)
@@ -512,6 +516,29 @@ local function DrawBrowser(track, fx)
   r.ImGui_SameLine(ctx)
   DrawPresetCombo(track, fx, "##preset")
   r.ImGui_Separator(ctx)
+
+  -- Quick-Parameter (Settings) immer sichtbar, auch ohne Parameter-Toggle
+  local qp = settings.quick_params:lower()
+  if qp:gsub("%s", "") ~= "" then
+    local nparams_q = r.TrackFX_GetNumParams(track, fx)
+    local shown_q = false
+    for p = 0, nparams_q - 1 do
+      local _, pname = r.TrackFX_GetParamName(track, fx, p)
+      for term in qp:gmatch("[^,]+") do
+        term = term:gsub("^%s+", ""):gsub("%s+$", "")
+        if term ~= "" and pname:lower():find(term, 1, true) then
+          if not shown_q then
+            r.ImGui_Text(ctx, "Quick-Parameter:")
+            r.ImGui_Separator(ctx)
+            shown_q = true
+          end
+          ParamWidget(track, fx, p, true)
+          break
+        end
+      end
+    end
+    if shown_q then r.ImGui_Separator(ctx) end
+  end
 
   -- Parameter erst auf expliziten Wunsch anzeigen (Presets laden sonst
   -- mitten im Rendern die Parameter um)
@@ -613,6 +640,16 @@ local function DrawSettings()
       SaveSettings(settings_scope)
     end
     r.ImGui_TextDisabled(ctx, "Nur FX deren Namen einen dieser Begriffe enthaelt werden angezeigt.")
+
+    r.ImGui_Separator(ctx)
+
+    r.ImGui_Text(ctx, "Quick-Parameter (Komma-getrennt, Substring, z. B. 'azimut, direct gain'):")
+    local chq, vq = r.ImGui_InputText(ctx, "##quickparams", settings.quick_params)
+    if chq then
+      settings.quick_params = vq
+      SaveSettings(settings_scope)
+    end
+    r.ImGui_TextDisabled(ctx, "Diese Parameter sind im Browser immer sichtbar (auch ohne 'Parameter anzeigen').")
 
     r.ImGui_Separator(ctx)
 
