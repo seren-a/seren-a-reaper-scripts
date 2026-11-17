@@ -453,6 +453,16 @@ end
 -- letztes gueltiges Focus-FX merken, damit die Anzeige nicht "wegspringt",
 -- sobald das Script-Fenster selbst fokussiert ist (GetFocusedFX() == 0)
 local last_focus_track, last_focus_fx = nil, nil
+local last_sel_track = nil  -- zuletzt gesehene Spur-Auswahl (Aenderung -> Follow-Sprung)
+
+-- erstes FX einer Spur, dessen Name dem FX-Filter entspricht
+local function FirstMatchingFX(track)
+  for f = 0, r.TrackFX_GetCount(track) - 1 do
+    local _, nm = r.TrackFX_GetFXName(track, f)
+    if FXMatches(nm) then return f end
+  end
+  return nil
+end
 
 local function GetCurrentFX()
   if follow_focused then
@@ -461,10 +471,23 @@ local function GetCurrentFX()
     local retval, tr, a, b = r.GetFocusedFX()
     local fn = (b ~= nil) and b or a
     if retval == 1 and tr >= 0 then
+      -- fokussiertes FX-Fenster hat Vorrang
       local track = (tr == 0) and r.GetMasterTrack(0) or r.GetTrack(0, tr - 1)
       if track and fn >= 0 and fn < r.TrackFX_GetCount(track) then
         last_focus_track, last_focus_fx = track, fn
       end
+      local sel0 = r.GetSelectedTrack(0, 0)
+      if sel0 then last_sel_track = sel0 end
+    else
+      -- kein FX-Fenster fokussiert: auf Spur-Auswahl reagieren, damit der
+      -- Browser nicht erst nach Oeffnen des FX-Fensters zur Spur wechselt
+      local sel = r.GetSelectedTrack(0, 0)
+      if not sel and r.GetLastTouchedTrack then sel = r.GetLastTouchedTrack() end
+      if sel and sel ~= last_sel_track then
+        local f = FirstMatchingFX(sel)
+        if f then last_focus_track, last_focus_fx = sel, f end
+      end
+      last_sel_track = sel
     end
   end
   if last_focus_track and r.ValidatePtr(last_focus_track, "MediaTrack*")
