@@ -251,15 +251,28 @@ local function GetPresetNames(track, fx)
   if preset_cache[key] then return preset_cache[key].names, count end
 
   -- Namen durch einmaliges Durchschalten ermitteln (ein Undo-Schritt,
-  -- danach wird das urspruengliche Preset wiederhergestellt)
+  -- danach wird der urspruengliche Zustand wiederhergestellt)
   local names = {}
+  -- Parameter-Schnappschuss: steht der FX gerade NICHT exakt auf einem
+  -- Preset (cur_idx < 0), wird danach der veraenderte Zustand per
+  -- SetParam restauriert - sonst wuerde ein Preset aufgezwungen
+  local nparams = r.TrackFX_GetNumParams(track, fx)
+  local snapshot = {}
+  for p = 0, nparams - 1 do
+    local _, v = r.TrackFX_GetParam(track, fx, p)
+    snapshot[p] = v
+  end
   r.Undo_BeginBlock()
   for i = 0, count - 1 do
     if not r.TrackFX_SetPresetByIndex(track, fx, i) then break end
     local _, name = r.TrackFX_GetPreset(track, fx)
     names[i + 1] = name or ""
   end
-  if cur_idx and cur_idx >= 0 then r.TrackFX_SetPresetByIndex(track, fx, cur_idx) end
+  if cur_idx and cur_idx >= 0 then
+    r.TrackFX_SetPresetByIndex(track, fx, cur_idx)
+  else
+    for p = 0, nparams - 1 do r.TrackFX_SetParam(track, fx, p, snapshot[p]) end
+  end
   r.Undo_EndBlock("FX Preset Browser: Presetnamen lesen", -1)
   if #names == 0 then return nil, 0 end
   preset_cache[key] = { names = names }
