@@ -16,6 +16,7 @@ local settings = {
   sort_mode  = "default",  -- default | az | za | newest
   last_used  = {},         -- "fxname<TAB>presetname" -> os.time()
   quick_params = "",       -- Komma-getrennte Parameter-Substrings fuer Quick-Anzeige
+  trackname_template = "{preset}",  -- Platzhalter fuer den Umbenennen-Button
 }
 
 local settings_scope = r.GetExtState(EXT_SECTION, "scope")
@@ -67,6 +68,7 @@ local function LoadSettings(scope)
   settings.sort_mode = "default"
   settings.last_used = {}
   settings.quick_params = ""
+  settings.trackname_template = "{preset}"
   if type(s) ~= "string" or s == "" then return end
   for line in s:gmatch("([^\n]*)\n?") do
     if line:find("^FILTER:") then
@@ -89,6 +91,8 @@ local function LoadSettings(scope)
       if m == "az" or m == "za" or m == "newest" or m == "default" then settings.sort_mode = m end
     elseif line:find("^QP:") then
       settings.quick_params = line:sub(#"QP:" + 1)
+    elseif line:find("^TPL:") then
+      settings.trackname_template = line:sub(#"TPL:" + 1)
     elseif line:find("^USED:") then
       local fxn, p, ts = line:sub(#"USED:" + 1):match("^([^\t]*)\t([^\t]*)\t(.*)$")
       if fxn and p then settings.last_used[fxn .. "\t" .. p] = tonumber(ts) or 0 end
@@ -97,7 +101,7 @@ local function LoadSettings(scope)
 end
 
 local function SaveSettings(settings_scope)
-  local t = { "FILTER:" .. settings.fx_filters, "SORT:" .. settings.sort_mode, "QP:" .. settings.quick_params }
+  local t = { "FILTER:" .. settings.fx_filters, "SORT:" .. settings.sort_mode, "QP:" .. settings.quick_params, "TPL:" .. settings.trackname_template }
   for fxn, presets in pairs(settings.excluded) do
     local lst = {}
     for p in pairs(presets) do table.insert(lst, p) end
@@ -380,6 +384,38 @@ end
 
 local function MarkPresetLoaded(track, fx, name)
   preset_fp[r.GetTrackGUID(track) .. "|" .. fx] = { name = name, fp = ParamFingerprint(track, fx) }
+end
+
+-- formatierter Wert des ersten Parameters, dessen Name `needle` enthaelt
+-- (Substring, case-insensitive)
+local function FormatParamBySubstring(track, fx, needle)
+  local n = r.TrackFX_GetNumParams(track, fx)
+  local lower = needle:lower()
+  for p = 0, n - 1 do
+    local _, pname = r.TrackFX_GetParamName(track, fx, p)
+    if pname:lower():find(lower, 1, true) then
+      local _, norm = r.TrackFX_GetParam(track, fx, p)
+      local _, fmt = r.TrackFX_FormatParamValue(track, fx, p, norm)
+      return fmt
+    end
+  end
+  return nil
+end
+
+-- Trackname-Template aufloesen: {preset} -> Presetname,
+-- {p:Name} / {param:Name} -> formatierter Parameterwert (Substring-Match);
+-- unbekannte Platzhalter und Freitext bleiben unveraendert stehen
+local function ApplyTrackNameTemplate(track, fx, template)
+  local _, pname = r.TrackFX_GetPreset(track, fx)
+  return (template:gsub("{(.-)}", function(ph)
+    if ph == "preset" then return (pname ~= nil and pname ~= "") and pname or "?" end
+    local key = ph:match("^p%:(.+)$") or ph:match("^param%:(.+)$")
+    if key then
+      local v = FormatParamBySubstring(track, fx, key)
+      if v then return v end
+    end
+    return "{" .. ph .. "}"
+  end))
 end
 
 local function DrawPresetCombo(track, fx, label)
@@ -725,7 +761,17 @@ local function DrawSettings()
 
     r.ImGui_Separator(ctx)
 
-    if r.ImGui_Button(ctx, "Ausgewählte Spuren nach aktuellem Preset umbenennen") then
+    r.ImGui_Text(ctx, "Trackname-Template:")
+    local cht, vt = r.ImGui_InputTextWithHint(ctx, "##tpl", "{preset}  |  {p:azimuth}", settings.trackname_template)
+    if cht then
+      settings.trackname_template = vt
+      SaveSettings(settings_scope)
+    end
+    r.ImGui_TextDisabled(ctx, "Platzhalter: {preset} = Presetname, {p:Name} = Parameterwert (Substring, z. B. {p:azimut}). Rest = Freitext. Leer = nur Presetname.")
+
+    if r.ImGui_Button(ctx, "Ausgewählte Spuren umbenennen (Template anwenden)") then
+      local tpl = settings.trackname_template
+      if tpl:gsub("%s", "") == "" then tpl = "{preset}" end
       r.Undo_BeginBlock()
       local nsel = r.CountSelectedTracks(0)
       for si = 0, nsel - 1 do
@@ -734,18 +780,15 @@ local function DrawSettings()
           for f = 0, r.TrackFX_GetCount(tr) - 1 do
             local _, nm = r.TrackFX_GetFXName(tr, f)
             if FXMatches(nm) then
-              local _, pname = r.TrackFX_GetPreset(tr, f)
-              if pname and pname ~= "" then
-                r.GetSetMediaTrackInfo_String(tr, "P_NAME", pname, true)
-              end
+              r.GetSetMediaTrackInfo_String(tr, "P_NAME", ApplyTrackNameTemplate(tr, f, tpl), true)
               break  -- erstes passendes FX pro Spur genuegt
             end
           end
         end
       end
-      r.Undo_EndBlock("FX Preset Browser: Spuren nach Preset umbenennen", -1)
+      r.Undo_EndBlock("FX Preset Browser: Spuren nach Template umbenennen", -1)
     end
-    r.ImGui_TextDisabled(ctx, "Nimmt pro ausgewählter Spur das erste FX, das dem FX-Filter entspricht, und setzt den Spurnamen auf dessen aktuelles Preset (ein Undo-Schritt).")
+    r.ImGui_TextDisabled(ctx, "Nimmt pro ausgewählter Spur das erste FX, das dem FX-Filter entspricht, und setzt den Spurnamen auf das Template mit dessen aktuellem Preset/Parametern (ein Undo-Schritt).")
 
     r.ImGui_Separator(ctx)
 
