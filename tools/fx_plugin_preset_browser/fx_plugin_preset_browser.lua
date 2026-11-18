@@ -259,33 +259,60 @@ local function GetPresetNames(track, fx)
   local key = r.GetTrackGUID(track) .. "|" .. fx .. "|" .. count
   if preset_cache[key] then return preset_cache[key].names, count end
 
-  -- Namen durch einmaliges Durchschalten ermitteln (ein Undo-Schritt,
-  -- danach wird der urspruengliche Zustand wiederhergestellt)
-  local names = {}
-  -- Parameter-Schnappschuss: steht der FX gerade NICHT exakt auf einem
-  -- Preset (cur_idx < 0), wird danach der veraenderte Zustand per
-  -- SetParam restauriert - sonst wuerde ein Preset aufgezwungen
+  -- Namen durch einmaliges Durchschalten ermitteln (ein Undo-Schritt).
+  -- Der Ausgangszustand wird danach VERIFIZIERT wiederhergestellt:
+  -- erst Parameter-Schnappschuss per SetParam, dann ggf. Preset-Index
+  -- (SetParam wuerde cur_idx sonst auf -1 setzen), anschliessend Vergleich
+  -- mit bis zu 3 Nachbesserungs-Runden - so bleibt auch bei API-Quirks
+  -- (z. B. REAPER 7.x) kein FX auf einem falschen Preset/Parameter stehen.
   local nparams = r.TrackFX_GetNumParams(track, fx)
   local snapshot = {}
   for p = 0, nparams - 1 do
     local _, v = r.TrackFX_GetParam(track, fx, p)
     snapshot[p] = v
   end
+  local names = {}
+  local max_presets = 2048  -- Sicherheits-Cap gegen Endlos-Presets
+  local n = math.min(count, max_presets)
   r.Undo_BeginBlock()
-  for i = 0, count - 1 do
+  for i = 0, n - 1 do
     if not r.TrackFX_SetPresetByIndex(track, fx, i) then break end
     local _, name = r.TrackFX_GetPreset(track, fx)
     names[i + 1] = name or ""
   end
-  if cur_idx and cur_idx >= 0 then
+  for p = 0, nparams - 1 do r.TrackFX_SetParam(track, fx, p, snapshot[p]) end
+  if cur_idx and cur_idx >= 0 and cur_idx < n then
     r.TrackFX_SetPresetByIndex(track, fx, cur_idx)
-  else
-    for p = 0, nparams - 1 do r.TrackFX_SetParam(track, fx, p, snapshot[p]) end
+  end
+  for _ = 1, 3 do
+    local ok = true
+    for p = 0, nparams - 1 do
+      local _, v = r.TrackFX_GetParam(track, fx, p)
+      if math.abs((v or 0) - (snapshot[p] or 0)) > 1e-6 then
+        r.TrackFX_SetParam(track, fx, p, snapshot[p])
+        ok = false
+      end
+    end
+    local now_idx = r.TrackFX_GetPresetIndex(track, fx)
+    if cur_idx and cur_idx >= 0 and now_idx ~= cur_idx then
+      if cur_idx < n then r.TrackFX_SetPresetByIndex(track, fx, cur_idx) end
+      ok = false
+    end
+    if ok then break end
   end
   r.Undo_EndBlock("FX Preset Browser: Presetnamen lesen", -1)
   if #names == 0 then return nil, 0 end
   preset_cache[key] = { names = names }
   return names, #names
+end
+
+-- gecachte Namen ohne Enumeration (nil, wenn noch nicht geladen)
+local function CachedPresetNames(track, fx)
+  local _, count = r.TrackFX_GetPresetIndex(track, fx)
+  if not count or count <= 0 then return nil, 0 end
+  local c = preset_cache[r.GetTrackGUID(track) .. "|" .. fx .. "|" .. count]
+  if c then return c.names, count end
+  return nil, count
 end
 
 local function FindRule(trackname)
@@ -321,10 +348,7 @@ local function SortPresetList(list, fxname)
   -- "default" = Reihenfolge wie gehabt (Preset-Index)
 end
 
-local function AllowedPresets(track, fx, fxname)
-  local names, count = GetPresetNames(track, fx)
-  if not names then return nil, nil end
-
+local function BuildPresetList(track, fx, fxname, names, count)
   local cur_idx = r.TrackFX_GetPresetIndex(track, fx)
   local _, trackname = r.GetTrackName(track)
   local rule = FindRule(trackname)
@@ -356,6 +380,12 @@ local function AllowedPresets(track, fx, fxname)
     if p.idx == cur_idx then cur = i end
   end
   return list, cur
+end
+
+local function AllowedPresets(track, fx, fxname)
+  local names, count = GetPresetNames(track, fx)
+  if not names then return nil, nil end
+  return BuildPresetList(track, fx, fxname, names, count)
 end
 
 -- Fingerprint aller Parameter, um "Preset geladen, aber veraendert" zu erkennen
@@ -435,45 +465,54 @@ end
 
 local function DrawPresetCombo(track, fx, label)
   local _, fxname = r.TrackFX_GetFXName(track, fx)
-  local list, cur = AllowedPresets(track, fx, fxname)
   local cur_preset, modified = PresetState(track, fx)
   local preview = (cur_preset ~= "" and cur_preset or "?") .. (modified and " *" or "")
-  if not list or #list == 0 then
-    -- trotzdem den aktuell gewaehlten Presetnamen anzeigen
-    r.ImGui_TextDisabled(ctx, (cur_preset and cur_preset ~= "") and preview or "keine Presets")
-    return
-  end
   if r.ImGui_BeginCombo(ctx, label, preview) then
-    for i, p in ipairs(list) do
-      if r.ImGui_Selectable(ctx, p.name, i == cur) then
-        r.TrackFX_SetPresetByIndex(track, fx, p.idx)
-        MarkPresetLoaded(track, fx, p.name)
-        settings.last_used[fxname .. "\t" .. p.name] = os.time()
-        SaveSettings(settings_scope)
-        if apply_to_all then
-          local n = 0
-          for ti = 0, r.GetNumTracks() - 1 do
-            local tr = r.GetTrack(0, ti)
-            for ff = 0, r.TrackFX_GetCount(tr) - 1 do
-              local _, nm = r.TrackFX_GetFXName(tr, ff)
-              if nm == fxname then n = n + 1 end
-            end
-          end
-          local ok = r.ShowMessageBox(
-            "Sicher? " .. n .. " Instanzen von '" .. fxname .. "' auf Preset '" .. p.name .. "' setzen?",
-            "Alle Instanzen uebernehmen", 4)  -- 4 = MB_YESNO
-          if ok == 6 then  -- IDYES
-            r.Undo_BeginBlock()
+    -- Lazy: Presetnamen werden erst beim Oeffnen des Dropdowns enumeriert
+    -- (GetPresetNames stellt den FX-Zustand verifiziert wieder her). Dadurch
+    -- wird beim Laden des Scripts kein einziges FX durchgeschaltet.
+    local names, count = CachedPresetNames(track, fx)
+    local list, cur
+    if names then
+      list, cur = BuildPresetList(track, fx, fxname, names, count)
+    else
+      list, cur = AllowedPresets(track, fx, fxname)
+    end
+    if not list or #list == 0 then
+      r.ImGui_TextDisabled(ctx, "keine Presets")
+    end
+    if list then
+      for i, p in ipairs(list) do
+        if r.ImGui_Selectable(ctx, p.name, i == cur) then
+          r.TrackFX_SetPresetByIndex(track, fx, p.idx)
+          MarkPresetLoaded(track, fx, p.name)
+          settings.last_used[fxname .. "\t" .. p.name] = os.time()
+          SaveSettings(settings_scope)
+          if apply_to_all then
+            local n = 0
             for ti = 0, r.GetNumTracks() - 1 do
               local tr = r.GetTrack(0, ti)
               for ff = 0, r.TrackFX_GetCount(tr) - 1 do
                 local _, nm = r.TrackFX_GetFXName(tr, ff)
-                if nm == fxname and not (tr == track and ff == fx) then
-                  r.TrackFX_SetPresetByIndex(tr, ff, p.idx)
-                end
+                if nm == fxname then n = n + 1 end
               end
             end
-            r.Undo_EndBlock("FX Preset Browser: Preset auf alle Instanzen setzen", -1)
+            local ok = r.ShowMessageBox(
+              "Sicher? " .. n .. " Instanzen von '" .. fxname .. "' auf Preset '" .. p.name .. "' setzen?",
+              "Alle Instanzen uebernehmen", 4)  -- 4 = MB_YESNO
+            if ok == 6 then  -- IDYES
+              r.Undo_BeginBlock()
+              for ti = 0, r.GetNumTracks() - 1 do
+                local tr = r.GetTrack(0, ti)
+                for ff = 0, r.TrackFX_GetCount(tr) - 1 do
+                  local _, nm = r.TrackFX_GetFXName(tr, ff)
+                  if nm == fxname and not (tr == track and ff == fx) then
+                    r.TrackFX_SetPresetByIndex(tr, ff, p.idx)
+                  end
+                end
+              end
+              r.Undo_EndBlock("FX Preset Browser: Preset auf alle Instanzen setzen", -1)
+            end
           end
         end
       end

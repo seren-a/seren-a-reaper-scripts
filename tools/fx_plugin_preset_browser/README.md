@@ -42,12 +42,12 @@ ReaScript (Lua) für REAPER mit [ReaImGui](https://github.com/cfillion/reaimgui)
 - "Fokussiertem FX folgen" reagiert auch auf die Spur-Auswahl (erstes FX mit Filter); fokussiertes FX-Fenster hat Vorrang
 - Settings-Button "Ausgewählte Spuren umbenennen (Template anwenden)" wendet das Trackname-Template an (erstes FX pro Spur, das dem Filter entspricht; ein Undo-Schritt)
 - Quick-Parameter-Feld in den Settings (z. B. azimut, direct gain): passende Parameter sind im Browser immer sichtbar, auch ohne Parameter anzeigen
-- Enumeration der Presetnamen setzt veraenderte FX (cur_idx < 0) nicht mehr zurueck, sondern restauriert den Parameter-Zustand
+- Enumeration der Presetnamen ist **lazy**: sie passiert erst beim ersten Öffnen des jeweiligen Preset-Dropdowns (ein einzelnes FX), nicht beim Laden des Scripts. Der FX-Zustand wird danach verifiziert wiederhergestellt (Parameter-Schnappschuss + Preset-Index, mit Nachbesserung) und die Namen werden gecacht
 
 ## Bekannte Grenzen
 
 - Die native Presetliste im FX-Fenster (REAPER-Menü) kann per Script **nicht** umsortiert werden – die Reihenfolge liefert das Plugin. Sortierbar sind nur die eigenen Dropdowns (Settings → Sortierung)
-- Presetnamen werden beim ersten Zugriff durch einmaliges Durchschalten ermittelt und gecacht (bei sehr großen Preset-Bibliotheken dauert der erste Aufbau etwas)
+- Presetnamen werden lazy beim ersten Öffnen des Dropdowns durch einmaliges Durchschalten ermittelt, verifiziert restauriert und gecacht (bei sehr großen Preset-Bibliotheken dauert der erste Aufbau etwas; Cap bei 2048 Presets)
 - Nur Track-FX, keine Take-FX
 - Einstellungen sind global oder pro Projekt, nicht beides gleichzeitig pro Regel
 
