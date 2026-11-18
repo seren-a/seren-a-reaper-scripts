@@ -18,6 +18,8 @@ ReaScript (Lua) für REAPER mit [ReaImGui](https://github.com/cfillion/reaimgui)
 - Folgt automatisch dem fokussierten FX (abschaltbar). Ist kein FX-Fenster fokussiert, folgt der Browser stattdessen der **ausgewählten Spur** (erstes FX, das dem FX-Filter entspricht) – das zuletzt gültige FX bleibt sichtbar, solange sich die Auswahl nicht ändert
 - Preset-Dropdown (gefiltert nach Ausschlüssen/Regeln)
 - Parameter (Slider/Checkboxen/Stufen-Dropdowns + Suchfilter) erst per Toggle **„Parameter anzeigen“** oben einblendbar (Default: aus, persistiert)
+- Button **„Parameter-Liste“**: eigenes Fenster mit allen Parametern des aktiven FX (Index, Name, aktueller Wert) + Filter – zeigt die Namen für `{p:…}` / Quick-Parameter (z. B. `{p:azimut}`, `{p:distance}`)
+- Wertanzeige: `deg` wird als `°` dargestellt (z. B. `90°` statt `90.0 deg`) – gilt für Slider, Stufen-Dropdowns, Parameter-Liste und Trackname-Template
 
 ### Preset Overview
 - Alle Tracks mit FX, die dem Filter entsprechen, untereinander

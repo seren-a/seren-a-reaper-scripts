@@ -139,6 +139,8 @@ local excl_sel_fxname = ""
 local excl_drag       = nil  -- Drag-Malen in Settings: Zielwert true/false
 local show_params     = r.GetExtState(EXT_SECTION, "show_params") == "1"
 local apply_to_all    = r.GetExtState(EXT_SECTION, "apply_to_all") == "1"
+local show_paramlist  = false
+local pl_filter       = ""
 ----------------------------------------------------------------
 -- Themes
 ----------------------------------------------------------------
@@ -431,6 +433,12 @@ local function MarkPresetLoaded(track, fx, name)
   preset_fp[r.GetTrackGUID(track) .. "|" .. fx] = { name = name, idx = cur_idx, fp = ParamFingerprint(track, fx) }
 end
 
+-- formatierter Parameterwert, schoen formatiert: "90.0 deg" -> "90.0°"
+local function FormatParam(track, fx, p, norm)
+  local _, fmt = r.TrackFX_FormatParamValue(track, fx, p, norm)
+  return (fmt:gsub("%s*deg", "°"))
+end
+
 -- formatierter Wert des ersten Parameters, dessen Name `needle` enthaelt
 -- (Substring, case-insensitive)
 local function FormatParamBySubstring(track, fx, needle)
@@ -440,8 +448,7 @@ local function FormatParamBySubstring(track, fx, needle)
     local _, pname = r.TrackFX_GetParamName(track, fx, p)
     if pname:lower():find(lower, 1, true) then
       local _, norm = r.TrackFX_GetParam(track, fx, p)
-      local _, fmt = r.TrackFX_FormatParamValue(track, fx, p, norm)
-      return fmt
+      return FormatParam(track, fx, p, norm)
     end
   end
   return nil
@@ -600,7 +607,7 @@ local function ParamWidget(track, fx, param, ignore_filter)
 
   local _, norm = r.TrackFX_GetParam(track, fx, param)
   local rv_step, step, _, _, istoggle = r.TrackFX_GetParameterStepSizes(track, fx, param)
-  local _, fmt = r.TrackFX_FormatParamValue(track, fx, param, norm)
+  local fmt = FormatParam(track, fx, param, norm)
   r.ImGui_PushID(ctx, param)
 
   r.ImGui_Text(ctx, name)
@@ -616,7 +623,7 @@ local function ParamWidget(track, fx, param, ignore_filter)
     if r.ImGui_BeginCombo(ctx, "", fmt) then
       for i = 0, steps do
         local nv = i * step
-        local _, lbl = r.TrackFX_FormatParamValue(track, fx, param, nv)
+        local lbl = FormatParam(track, fx, param, nv)
         if r.ImGui_Selectable(ctx, lbl, math.abs(norm - nv) < step / 2) then
           r.TrackFX_SetParam(track, fx, param, nv)
         end
@@ -955,6 +962,38 @@ local function DrawSettings()
 end
 
 ----------------------------------------------------------------
+-- Parameter-Liste (aktives FX)
+----------------------------------------------------------------
+local function DrawParamList(track, fx)
+  local vis, open = r.ImGui_Begin(ctx, "Parameter-Liste", true)
+  if vis then
+    local _, fxname = r.TrackFX_GetFXName(track, fx)
+    r.ImGui_Text(ctx, fxname)
+    local chf, fbuf = r.ImGui_InputTextWithHint(ctx, "##plfilter", "Parameter filtern...", pl_filter)
+    if chf then pl_filter = fbuf end
+    r.ImGui_Separator(ctx)
+    if r.ImGui_BeginChild(ctx, "##pllist") then
+      local n = r.TrackFX_GetNumParams(track, fx)
+      local pf = pl_filter:lower()
+      local shown = 0
+      for p = 0, n - 1 do
+        local _, pname = r.TrackFX_GetParamName(track, fx, p)
+        if pf == "" or pname:lower():find(pf, 1, true) then
+          local _, norm = r.TrackFX_GetParam(track, fx, p)
+          r.ImGui_Text(ctx, p .. "  " .. pname .. "  =  " .. FormatParam(track, fx, p, norm))
+          shown = shown + 1
+        end
+      end
+      if shown == 0 then r.ImGui_TextDisabled(ctx, "keine Parameter") end
+      r.ImGui_EndChild(ctx)
+    end
+    r.ImGui_TextDisabled(ctx, "In {p:...} / Quick-Parameter (case-insensitive) Substring des Namens, z. B. {p:azimut}, {p:distance}.")
+    r.ImGui_End(ctx)  -- ReaImGui: nur wenn Begin true lieferte
+  end
+  show_paramlist = open
+end
+
+----------------------------------------------------------------
 -- Main
 ----------------------------------------------------------------
 local function frame()
@@ -997,6 +1036,10 @@ local function frame()
       if r.ImGui_Button(ctx, show_overview and "Overview aus" or "Overview an") then
         show_overview = not show_overview
       end
+      r.ImGui_SameLine(ctx)
+      if r.ImGui_Button(ctx, "Parameter-Liste") then
+        show_paramlist = not show_paramlist
+      end
       r.ImGui_Separator(ctx)
       if track and fx then
         DrawBrowser(track, fx)
@@ -1010,10 +1053,11 @@ local function frame()
 
   if show_overview then DrawOverview() end
   if show_settings then DrawSettings() end
+  if show_paramlist and track and fx then DrawParamList(track, fx) end
 
   PopTheme()
 
-  if not show_browser and not show_overview and not show_settings then
+  if not show_browser and not show_overview and not show_settings and not show_paramlist then
     r.ImGui_DestroyContext(ctx)
     return
   end
