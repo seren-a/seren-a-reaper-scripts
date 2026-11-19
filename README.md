@@ -19,6 +19,12 @@ Projekt-Kontext für AI-Sessions: [docs/AI-KONTEXT.md](docs/AI-KONTEXT.md).
 
 Die Werkzeuge rund um OXI, E16 und Midi Fighter Twister liegen jeweils in einem eigenen Branch, der nur seine Dateien enthält (zum Herunterladen als ZIP oder Klonen von genau einem Werkzeug). Jede Branch-README verweist auf die anderen.
 
+> **Regel: Jedes Projekt ist ein eigener Branch, und nichts davon zieht zurück auf `main`.**
+> Projekt-Branches werden nicht in `main` gemergt, auch nicht per Pull Request. Weiterentwicklung
+> passiert nur im Branch des Projekts (Zwischenschritte gern in Unter-Branches, die dann in den
+> Projekt-Branch gehen). `main` enthält nur diese Übersicht, `docs/` und die älteren Tools unter `tools/`.
+> Ein neues Projekt bekommt einen neuen Branch und hier eine Zeile in der Tabelle.
+
 | Branch | Inhalt |
 | --- | --- |
 | [`oxi-puzzle`](https://github.com/seren-a/seren-a-reaper-scripts/tree/oxi-puzzle) | OXI One MkII als Item-Puzzle in Reaper |

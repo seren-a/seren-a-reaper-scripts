@@ -10,9 +10,10 @@ Diese Datei liefert neuen AI-Sessions (Agent im VS Code o. Ä.) den nötigen Pro
 
 ## Arbeitsweise (bitte beibehalten)
 
-- Pro Aufgabe (Issue) ein Branch: `issue-N-kurzbeschreibung`
+- **Jedes Projekt ist ein eigener Branch** (z. B. `oxi-puzzle`, `oxi-e16-reaper`, `toolbox`), der nur seine Dateien enthält. **Nichts davon zieht zurück auf `main`**: keine Merges und keine PRs von Projekt-Branches nach `main`. `main` hält nur die Übersicht (README mit Branch-Tabelle), `docs/` und die älteren Tools unter `tools/`.
+- Pro Aufgabe (Issue) ein Branch: `issue-N-kurzbeschreibung`, abgezweigt vom Projekt-Branch
 - Kleine Commits mit ehrlichen Nachrichten
-- PR auf `main`, vor dem Merge „Files changed“ reviewen
+- PR auf den **Projekt-Branch** (nicht auf `main`), vor dem Merge „Files changed“ reviewen
 - Im PR-Text `Closes #N` für das zugehörige Issue
 - Nutzer lernt strukturiertes Arbeiten/Programmieren: kleine Schritte, saubere Struktur (kleine Funktionen, Sektionen mit Kommentar-Bannern, State an einem Ort), Erklärungen dazu sind willkommen
 
