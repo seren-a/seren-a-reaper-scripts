@@ -282,7 +282,7 @@ local function GetPresetNames(track, fx)
     local _, v = r.TrackFX_GetParam(track, fx, p)
     snapshot[p] = v
   end
-  local names, types = {}, {}
+  local names, types, files = {}, {}, {}
   local max_presets = 2048  -- Sicherheits-Cap gegen Endlos-Presets
   local n = math.min(count, max_presets)
   r.Undo_BeginBlock()
@@ -297,6 +297,7 @@ local function GetPresetNames(track, fx)
       upf = PickStr(r.TrackFX_GetUserPresetFilename(track, fx))
     end
     types[i + 1] = (upf ~= "") and "reaper" or "plugin"
+    files[i + 1] = upf
   end
   for p = 0, nparams - 1 do r.TrackFX_SetParam(track, fx, p, snapshot[p]) end
   if cur_idx and cur_idx >= 0 and cur_idx < n then
@@ -320,15 +321,120 @@ local function GetPresetNames(track, fx)
   end
   r.Undo_EndBlock("FX Preset Browser: Presetnamen lesen", -1)
   if #names == 0 then return nil end
-  preset_cache[key] = { names = names, types = types }
+  preset_cache[key] = { names = names, types = types, files = files }
   return preset_cache[key]
 end
 
--- gecachter Eintrag (names+types) ohne Enumeration (nil, wenn noch nicht geladen)
+-- gecachter Eintrag (names+types+files) ohne Enumeration (nil, wenn noch nicht geladen)
 local function CachedPresetNames(track, fx)
   local _, count = r.TrackFX_GetPresetIndex(track, fx)
   if not count or count <= 0 then return nil end
   return preset_cache[r.GetTrackGUID(track) .. "|" .. fx .. "|" .. count]
+end
+
+----------------------------------------------------------------
+-- Preset-Rangfolge & Datei-Operationen (Aufräumen)
+----------------------------------------------------------------
+-- Rang eines Presets bei Duplikaten: erst bevorzugter Typ (Settings),
+-- dann zuletzt verwendet (Datum, last_used), dann höherer Index
+local function PresetRank(e, fxname)
+  local preferred = (settings.dup_pref == "reaper") and (e.type == "reaper")
+    or (settings.dup_pref == "plugin" and e.type == "plugin")
+  local trank = preferred and 2 or 1
+  local ts = settings.last_used[fxname .. "\t" .. e.name] or 0
+  return trank * 1e12 + ts + (e.idx or 0) * 1e-9
+end
+
+-- User-Preset-Ordner des FX (aus einem bekannten .rpl-Pfad, sonst FXPresets/<fxname>)
+local function PresetDirOf(entry, fxname)
+  for _, f in ipairs(entry.files or {}) do
+    if f and f ~= "" then
+      local dir = f:match("^(.*)[/\\][^/\\]*$")
+      if dir and dir ~= "" then return dir end
+    end
+  end
+  local res = r.GetResourcePath and r.GetResourcePath() or ""
+  return res .. "/FXPresets/" .. fxname
+end
+
+local function SanitizeFileName(name)
+  return (name:gsub('[/\\:%*?"<>|]', "_"))
+end
+
+local function WriteTextFile(path, content)
+  if not io or not io.open then return false end
+  local f, err = io.open(path, "wb")
+  if not f then return false, err end
+  f:write(content)
+  f:close()
+  return true
+end
+
+local function DeleteFile(path)
+  if os and os.remove then return os.remove(path) end
+  return false
+end
+
+-- Duplikate (gleiche Presetnamen) aufraeumen: pro Gruppe gewinnt PresetRank,
+-- verlierende .rpl-Dateien werden geloescht (doit=true). Plugin-eigene Presets
+-- (.aupreset/.vstpreset) kann ein Script nicht loeschen -> nur Anzeige-Dedupe.
+local function CleanupDuplicates(entry, fxname, doit)
+  local groups = {}
+  for i, nm in ipairs(entry.names) do
+    local k = nm:lower()
+    groups[k] = groups[k] or {}
+    table.insert(groups[k], { name = nm, idx = i - 1, type = entry.types[i] or "plugin", file = (entry.files and entry.files[i]) or "" })
+  end
+  local dups, del_rpl, plugin_losers, deleted = 0, 0, 0, 0
+  for _, g in pairs(groups) do
+    if #g > 1 then
+      dups = dups + 1
+      local winner = g[1]
+      for _, e in ipairs(g) do
+        if PresetRank(e, fxname) > PresetRank(winner, fxname) then winner = e end
+      end
+      for _, e in ipairs(g) do
+        if e ~= winner then
+          if e.file ~= "" then
+            del_rpl = del_rpl + 1
+            if doit and DeleteFile(e.file) then deleted = deleted + 1 end
+          else
+            plugin_losers = plugin_losers + 1
+          end
+        end
+      end
+    end
+  end
+  return { dups = dups, del_rpl = del_rpl, plugin_losers = plugin_losers, deleted = deleted }
+end
+
+-- alle Plugin-Presets des FX als .rpl in dessen User-Preset-Ordner speichern
+-- (ueberschreibt gleichnamige .rpl). FX-Zustand wird gesichert/restauriert.
+local function SaveAllPresetsAsRpl(track, fx, fxname, entry)
+  local dir = PresetDirOf(entry, fxname)
+  local cur_idx = r.TrackFX_GetPresetIndex(track, fx)
+  local nparams = r.TrackFX_GetNumParams(track, fx)
+  local snapshot = {}
+  for p = 0, nparams - 1 do
+    local _, v = r.TrackFX_GetParam(track, fx, p)
+    snapshot[p] = v
+  end
+  local written = 0
+  r.Undo_BeginBlock()
+  for i, nm in ipairs(entry.names) do
+    if (entry.types[i] or "plugin") == "plugin" and nm ~= "" then
+      if r.TrackFX_SetPresetByIndex(track, fx, i - 1) then
+        local chunk = r.TrackFX_GetFXChunk and r.TrackFX_GetFXChunk(track, fx) or nil
+        if chunk and chunk ~= "" then
+          if WriteTextFile(dir .. "/" .. SanitizeFileName(nm) .. ".rpl", chunk) then written = written + 1 end
+        end
+      end
+    end
+  end
+  for p = 0, nparams - 1 do r.TrackFX_SetParam(track, fx, p, snapshot[p]) end
+  if cur_idx and cur_idx >= 0 then r.TrackFX_SetPresetByIndex(track, fx, cur_idx) end
+  r.Undo_EndBlock("FX Preset Browser: Presets als .rpl speichern", -1)
+  return written, dir
 end
 
 local function FindRule(trackname)
@@ -368,16 +474,10 @@ end
 -- erst der bevorzugte Preset-Typ (Settings), dann das zuletzt verwendete
 -- (Datum, last_used), dann der höhere Preset-Index
 local function DedupePresets(list, fxname)
-  local function rank(e)
-    local preferred = (settings.dup_pref == "reaper") and (e.type == "reaper") or (settings.dup_pref == "plugin" and e.type == "plugin")
-    local trank = preferred and 2 or 1
-    local ts = settings.last_used[fxname .. "\t" .. e.name] or 0
-    return trank * 1e12 + ts * 1 + (e.idx or 0) * 1e-9
-  end
   local best = {}
   for _, p in ipairs(list) do
     local k = p.name:lower()
-    if not best[k] or rank(p) > rank(best[k]) then best[k] = p end
+    if not best[k] or PresetRank(p, fxname) > PresetRank(best[k], fxname) then best[k] = p end
   end
   local out = {}
   for _, p in ipairs(list) do
@@ -808,10 +908,20 @@ local function CollectMatchingFXNames()
   return out
 end
 
+-- Abschnitts-Header (Gold)
+local function SectionHeader(text)
+  r.ImGui_Spacing(ctx)
+  r.ImGui_Separator(ctx)
+  r.ImGui_PushStyleColor(ctx, ColIdx("Col_Text"), 0xFFD700FF)  -- Gold, 0xRRGGBBAA
+  r.ImGui_Text(ctx, text)
+  r.ImGui_PopStyleColor(ctx)
+end
+
 local function DrawSettings()
   local vis, open = r.ImGui_Begin(ctx, "Settings", true)
   if vis then
-    r.ImGui_Text(ctx, "FX-Filter (Komma-getrennt, Substring):")
+    SectionHeader("FX-Filter")
+    r.ImGui_Text(ctx, "Komma-getrennte Substrings (Default: dearVR):")
     local ch, v = r.ImGui_InputText(ctx, "##filters", settings.fx_filters)
     if ch then
       settings.fx_filters = v
@@ -819,55 +929,21 @@ local function DrawSettings()
     end
     r.ImGui_TextDisabled(ctx, "Nur FX deren Namen einen dieser Begriffe enthaelt werden angezeigt.")
 
-    r.ImGui_Separator(ctx)
-
-    r.ImGui_Text(ctx, "Quick-Parameter (Komma-getrennt, Substring, z. B. 'azimut, direct gain'):")
-    local chq, vq = r.ImGui_InputText(ctx, "##quickparams", settings.quick_params)
-    if chq then
-      settings.quick_params = vq
-      SaveSettings(settings_scope)
-    end
-    r.ImGui_TextDisabled(ctx, "Diese Parameter sind im Browser immer sichtbar (auch ohne 'Parameter anzeigen').")
-
-    r.ImGui_Separator(ctx)
-
-    r.ImGui_Text(ctx, "Theme:")
+    SectionHeader("Preset-Liste: Sortierung & Duplikate")
+    r.ImGui_Text(ctx, "Sortierung:")
     r.ImGui_SameLine(ctx)
-    if r.ImGui_BeginCombo(ctx, "##theme", current_theme) then
-      for _, name in ipairs(theme_order) do
-        if r.ImGui_Selectable(ctx, name, name == current_theme) then
-          current_theme = name
-          r.SetExtState(EXT_SECTION, "theme", name, true)
-          ResolveTheme()
+    if r.ImGui_BeginCombo(ctx, "##sort", sort_labels[settings.sort_mode] or settings.sort_mode) then
+      for _, mode in ipairs(sort_order) do
+        if r.ImGui_Selectable(ctx, sort_labels[mode], settings.sort_mode == mode) then
+          settings.sort_mode = mode
+          SaveSettings(settings_scope)
         end
       end
       r.ImGui_EndCombo(ctx)
     end
-
-    r.ImGui_Separator(ctx)
-
-    r.ImGui_Text(ctx, "Einstellungen speichern in:")
-    r.ImGui_SameLine(ctx)
-    if r.ImGui_BeginCombo(ctx, "##scope", settings_scope == "project" and "Projekt" or "Global") then
-      if r.ImGui_Selectable(ctx, "Global", settings_scope == "global") then
-        settings_scope = "global"
-        r.SetExtState(EXT_SECTION, "scope", "global", true)
-        LoadSettings("global")
-      end
-      if r.ImGui_Selectable(ctx, "Projekt", settings_scope == "project") then
-        settings_scope = "project"
-        r.SetExtState(EXT_SECTION, "scope", "project", true)
-        LoadSettings("project")
-      end
-      r.ImGui_EndCombo(ctx)
-    end
-    r.ImGui_SameLine(ctx)
-    r.ImGui_TextDisabled(ctx, settings_scope == "project" and "(Projekt ohne eigene Daten nutzt die globalen)" or "")
-
-    r.ImGui_Separator(ctx)
-
-    r.ImGui_Text(ctx, "Duplikate (gleicher Presetname bei Plugin- und REAPER-Presets):")
-    local chd, vd = r.ImGui_Checkbox(ctx, "nur ranghöchstes/neuestes Preset anzeigen", settings.dedupe)
+    r.ImGui_TextDisabled(ctx, "Gilt fuer die Settings-Liste und alle Preset-Dropdowns (Browser/Overview).")
+    r.ImGui_Spacing(ctx)
+    local chd, vd = r.ImGui_Checkbox(ctx, "Duplikate ausblenden (gleicher Name -> nur ranghoechstes/neuestes)", settings.dedupe)
     if chd then
       settings.dedupe = (vd == true or vd == 1)
       SaveSettings(settings_scope)
@@ -884,18 +960,26 @@ local function DrawSettings()
       end
       r.ImGui_EndCombo(ctx)
     end
-    r.ImGui_TextDisabled(ctx, "Bei gleichem Namen gewinnt der bevorzugte Preset-Typ, danach das zuletzt verwendete (Datum), dann der höhere Index.")
+    r.ImGui_TextDisabled(ctx, "Bei gleichem Namen gewinnt: bevorzugter Preset-Typ, dann zuletzt verwendet (Datum), dann hoeherer Index.")
 
-    r.ImGui_Separator(ctx)
+    SectionHeader("Quick-Parameter (Browser)")
+    r.ImGui_Text(ctx, "Komma-getrennte Substrings (z. B. 'azimut, distance'):")
+    local chq, vq = r.ImGui_InputText(ctx, "##quickparams", settings.quick_params)
+    if chq then
+      settings.quick_params = vq
+      SaveSettings(settings_scope)
+    end
+    r.ImGui_TextDisabled(ctx, "Diese Parameter sind im Browser immer sichtbar (auch ohne 'Parameter anzeigen').")
 
-    r.ImGui_Text(ctx, "Trackname-Template:")
+    SectionHeader("Trackname-Template")
+    r.ImGui_Text(ctx, "Platzhalter fuer den Umbenennen-Button:")
     local cht, vt = r.ImGui_InputTextWithHint(ctx, "##tpl", "{preset}  |  {p:azimuth}", settings.trackname_template)
     if cht then
       settings.trackname_template = vt
       SaveSettings(settings_scope)
     end
-    r.ImGui_TextDisabled(ctx, "Platzhalter: {preset} = Presetname, {p:Name} = Parameterwert (Substring, z. B. {p:azimut}). Rest = Freitext. Leer = nur Presetname.")
-
+    r.ImGui_TextDisabled(ctx, "{preset} = Presetname, {p:Name} = Parameterwert (z. B. {p:azimut}). Rest = Freitext. Leer = nur Presetname.")
+    r.ImGui_Spacing(ctx)
     if r.ImGui_Button(ctx, "Ausgewählte Spuren umbenennen (Template anwenden)") then
       local tpl = settings.trackname_template
       if tpl:gsub("%s", "") == "" then tpl = "{preset}" end
@@ -915,11 +999,9 @@ local function DrawSettings()
       end
       r.Undo_EndBlock("FX Preset Browser: Spuren nach Template umbenennen", -1)
     end
-    r.ImGui_TextDisabled(ctx, "Nimmt pro ausgewählter Spur das erste FX, das dem FX-Filter entspricht, und setzt den Spurnamen auf das Template mit dessen aktuellem Preset/Parametern (ein Undo-Schritt).")
+    r.ImGui_TextDisabled(ctx, "Erstes FX pro ausgewaehlter Spur, das dem Filter entspricht (ein Undo-Schritt).")
 
-    r.ImGui_Separator(ctx)
-
-    r.ImGui_Text(ctx, "Presets ausschliessen (pro Plugin):")
+    SectionHeader("Presets ausschliessen & aufraeumen")
     local names = CollectMatchingFXNames()
     if #names == 0 then
       r.ImGui_TextDisabled(ctx, "Keine passenden FX im Projekt gefunden.")
@@ -931,18 +1013,6 @@ local function DrawSettings()
         for _, nm in ipairs(names) do
           if r.ImGui_Selectable(ctx, nm, nm == excl_sel_fxname) then
             excl_sel_fxname = nm
-          end
-        end
-        r.ImGui_EndCombo(ctx)
-      end
-
-      r.ImGui_Text(ctx, "Sortierung:")
-      r.ImGui_SameLine(ctx)
-      if r.ImGui_BeginCombo(ctx, "##sort", sort_labels[settings.sort_mode] or settings.sort_mode) then
-        for _, mode in ipairs(sort_order) do
-          if r.ImGui_Selectable(ctx, sort_labels[mode], settings.sort_mode == mode) then
-            settings.sort_mode = mode
-            SaveSettings(settings_scope)
           end
         end
         r.ImGui_EndCombo(ctx)
@@ -996,15 +1066,38 @@ local function DrawSettings()
             if changed then SaveSettings(settings_scope) end
           end
           r.ImGui_TextDisabled(ctx, "Klick = umschalten, Drag = malt auf alle beruehrten. Markiert = ausgeschlossen.")
+          r.ImGui_Spacing(ctx)
+          if r.ImGui_Button(ctx, "Duplikate aufraeumen (.rpl-Loser loeschen)") then
+            local plan = CleanupDuplicates(entry, excl_sel_fxname, false)
+            if plan.dups == 0 then
+              r.ShowMessageBox("Keine Duplikate (gleiche Presetnamen) gefunden.", "Aufraeumen", 0)
+            else
+              local ok = r.ShowMessageBox(
+                plan.dups .. " Duplikat-Gruppen: " .. plan.del_rpl .. " .rpl loeschen" ..
+                (plan.plugin_losers > 0 and (", " .. plan.plugin_losers .. " Plugin-Presets bleiben (nur Anzeige-Dedupe)") or "") .. "?",
+                "Duplikate aufraeumen", 4)  -- MB_YESNO
+              if ok == 6 then
+                local done = CleanupDuplicates(entry, excl_sel_fxname, true)
+                preset_cache[r.GetTrackGUID(track) .. "|" .. fx .. "|" .. #entry.names] = nil
+                r.ShowMessageBox(done.deleted .. " .rpl geloescht.", "Aufraeumen", 0)
+              end
+            end
+          end
+          r.ImGui_SameLine(ctx)
+          if r.ImGui_Button(ctx, "Alle Plugin-Presets als .rpl speichern") then
+            local n = SaveAllPresetsAsRpl(track, fx, excl_sel_fxname, entry)
+            preset_cache[r.GetTrackGUID(track) .. "|" .. fx .. "|" .. #entry.names] = nil
+            r.ShowMessageBox(n .. " .rpl geschrieben (gleichnamige ueberschrieben).", "Als .rpl speichern", 0)
+          end
+          r.ImGui_TextDisabled(ctx, "Plugin-Formate (.aupreset/.vstpreset) kann nur das Plugin selbst schreiben; .rpl schreibt/loescht das Script direkt.")
         else
           r.ImGui_TextDisabled(ctx, "Dieses FX hat keine Presets.")
         end
       end
     end
 
-    r.ImGui_Separator(ctx)
-
-    r.ImGui_Text(ctx, "Track-Regeln (Track enthaelt -> nur erlaubte Presets):")
+    SectionHeader("Track-Regeln")
+    r.ImGui_TextDisabled(ctx, "Erste Regel, deren Pattern im Tracknamen vorkommt, gewinnt (leer = alle Presets).")
     for i, rule in ipairs(settings.rules) do
       r.ImGui_PushID(ctx, "rule" .. i)
       local ch1, p = r.ImGui_InputText(ctx, "##pat", rule.pattern)
@@ -1023,6 +1116,38 @@ local function DrawSettings()
       table.insert(settings.rules, { pattern = "", allowed = "" })
     end
     r.ImGui_TextDisabled(ctx, 'Beispiel: Pattern "VO", erlaubt "Room A,Room B".')
+
+    SectionHeader("Darstellung & Speichern")
+    r.ImGui_Text(ctx, "Theme:")
+    r.ImGui_SameLine(ctx)
+    if r.ImGui_BeginCombo(ctx, "##theme", current_theme) then
+      for _, name in ipairs(theme_order) do
+        if r.ImGui_Selectable(ctx, name, name == current_theme) then
+          current_theme = name
+          r.SetExtState(EXT_SECTION, "theme", name, true)
+          ResolveTheme()
+        end
+      end
+      r.ImGui_EndCombo(ctx)
+    end
+    r.ImGui_Spacing(ctx)
+    r.ImGui_Text(ctx, "Einstellungen speichern in:")
+    r.ImGui_SameLine(ctx)
+    if r.ImGui_BeginCombo(ctx, "##scope", settings_scope == "project" and "Projekt" or "Global") then
+      if r.ImGui_Selectable(ctx, "Global", settings_scope == "global") then
+        settings_scope = "global"
+        r.SetExtState(EXT_SECTION, "scope", "global", true)
+        LoadSettings("global")
+      end
+      if r.ImGui_Selectable(ctx, "Projekt", settings_scope == "project") then
+        settings_scope = "project"
+        r.SetExtState(EXT_SECTION, "scope", "project", true)
+        LoadSettings("project")
+      end
+      r.ImGui_EndCombo(ctx)
+    end
+    r.ImGui_SameLine(ctx)
+    r.ImGui_TextDisabled(ctx, settings_scope == "project" and "(Projekt ohne eigene Daten nutzt die globalen)" or "")
     r.ImGui_End(ctx)  -- ReaImGui: nur wenn Begin true lieferte (sonst "End() too many times")
   end
   show_settings = open
