@@ -33,7 +33,7 @@ ReaScript (Lua) für REAPER mit [ReaImGui](https://github.com/cfillion/reaimgui)
 - **Speichern in:** Global (`reaper-extstate.ini`) oder Projekt (Projekt-ExtState; ohne eigene Projektdaten gelten die globalen)
 - **Presets ausschließen:** pro Plugin (z. B. bei „dearVR Pro 2“ einzelne Presets ausblenden) – Klick toggelt, **Drag über die Liste** malt den Zustand auf alle berührten Presets; die volle Liste bleibt sichtbar, Ausgeschlossenes ist also re-aktivierbar
 - **Sortierung der Presetliste:** wie gehabt (Preset-Reihenfolge), A-Z, Z-A, neueste zuerst (zuletzt verwendete Presets; wird beim Auswählen in einem Dropdown getrackt) – gilt für die Settings-Liste **und** alle Preset-Dropdowns in Browser/Overview
-- **Duplikate:** Checkbox „nur ranghöchstes/neuestes Preset anzeigen
+- **Duplikate:** Checkbox „nur ranghöchstes/neuestes Preset anzeigen“ blendet doppelte Presetnamen aus (z. B. Plugin-Preset (AU/VST3) + REAPER-User-Preset (.rpl) mit gleichem Namen). Rangfolge einstellbar: „Plugin (AU/VST3) bevorzugt“ oder „REAPER (.rpl) bevorzugt“ – bei gleichem Namen gewinnt der bevorzugte Typ, dann das zuletzt verwendete (Datum), dann der höhere Index. Der Preset-Typ wird pro Index beim Enumerieren über `TrackFX_GetUserPresetFilename` erkannt (Dateiname = REAPER-User-Preset).
 - **Track-Regeln:** Erste Regel, deren Pattern im Tracknamen vorkommt, gewinnt. Erlaubte Presets als Komma-Liste, leer = alle.
 - **Trackname-Template:** Platzhalter für den Umbenennen-Button, z. B. `{preset} | {p:azimuth}°`. `{preset}` = aktuelles Preset, `{p:Name}`/`{param:Name}` = formatierter Wert des ersten Parameters, dessen Name `Name` enthält (Substring, case-insensitive). Unbekannte Platzhalter und Freitext bleiben stehen. Leer = nur Presetname.
 
