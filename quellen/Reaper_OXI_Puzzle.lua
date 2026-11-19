@@ -2,7 +2,7 @@
 -- Grid: 8 tracks x up to 16 items ("Puzzle"), 4 encoders with switchable states, on-device menu (PAGE),
 -- settings window: Reaper_OXI_Einstellungen.lua (same ExtState). Protocol after DrivenByMoss (OXI One).
 local r = reaper
-local VERSION = "v8.18"
+local VERSION = "v8.19"
 local EXT = "seren_OXI"
 
 ---------------------------------------------------------------------------------------------------
@@ -431,6 +431,7 @@ local function trackAtRow(row)
   return tracks[view.off + k + 1]
 end
 local function oxiOnly() return cfg.select == "oxi" end
+local selectTrack, stepTrack                     -- defined under "input", used by the encoders before that
 local function selTrack()                        -- the track the encoders work on
   if oxiOnly() then
     if view.focus and r.ValidatePtr(view.focus, "MediaTrack*") then return view.focus end
@@ -695,7 +696,10 @@ local function turnRaw(e, d)
   local s = sendCtx() and 2 or view.state
   local acc = math.abs(d) > 2 and 4 or 1
   if s == 1 then
-    if e == 4 then view.off = view.off + (d > 0 and 1 or -1); clampView(); return end
+    if e == 4 then                               -- v8.19: Enc 4 = previous/next track (Shift = only scroll the grid)
+      if shift then view.off = view.off + (d > 0 and 1 or -1); clampView() else stepTrack(d > 0 and 1 or -1) end
+      return
+    end
     local its = targetItems()
     if #its == 0 then notify("kein Item"); return end
     for _, it in ipairs(its) do
@@ -735,7 +739,10 @@ local function turnRaw(e, d)
     end
     r.UpdateArrange(); markUndo("OXI: Item")
   elseif s == 7 then
-    if e == 4 then view.off = view.off + (d > 0 and 1 or -1); clampView(); return end
+    if e == 4 then                               -- v8.19: Enc 4 = previous/next track (Shift = only scroll the grid)
+      if shift then view.off = view.off + (d > 0 and 1 or -1); clampView() else stepTrack(d > 0 and 1 or -1) end
+      return
+    end
     if not tr then return end
     if e == 1 then r.SetMediaTrackInfo_Value(tr, "D_VOL", stepDb(r.GetMediaTrackInfo_Value(tr, "D_VOL"), d * 0.5))
     elseif e == 2 then
@@ -919,6 +926,11 @@ local ENC_LABELS = {
 local LONG = { { "Gain", "Fade-in", "Fade-out", "Spur" }, nil, nil, nil, nil, { "Position", "Pitch", "Rate", "Länge" },
   { "Volume", "Pan", "Breite", "Spur" } }
 local UNIT = { { " dB", "", "", "" }, nil, nil, nil, nil, { " s", " HT", "x", " s" }, { " dB", "", "", "" } }
+local function trackPos()                        -- "3/12": place of the selected track in the grid list
+  local tr = selTrack()
+  for i, t in ipairs(tracks) do if t == tr then return string.format("%d/%d", i, #tracks) end end
+  return string.format("-/%d", #tracks)
+end
 local function encValues()
   local tr, s = selTrack(), sendCtx() and 2 or view.state
   local L, V = {}, {}
@@ -944,7 +956,7 @@ local function encValues()
     V[1] = it and fmtDb(r.GetMediaItemInfo_Value(it, "D_VOL")) or "-"
     V[2] = it and string.format("%dms", math.floor(r.GetMediaItemInfo_Value(it, "D_FADEINLEN") * 1000 + 0.5)) or "-"
     V[3] = it and string.format("%dms", math.floor(r.GetMediaItemInfo_Value(it, "D_FADEOUTLEN") * 1000 + 0.5)) or "-"
-    V[4] = string.format("%d/%d", math.min(#tracks, view.off + 1), #tracks)
+    V[4] = trackPos()
   elseif s == 6 then
     local tk = it and r.GetActiveTake(it)
     V[1] = it and string.format("%.2f", r.GetMediaItemInfo_Value(it, "D_POSITION")) or "-"
@@ -955,7 +967,7 @@ local function encValues()
     V[1] = tr and fmtDb(r.GetMediaTrackInfo_Value(tr, "D_VOL")) or "-"
     V[2] = tr and string.format("%+d", math.floor(r.GetMediaTrackInfo_Value(tr, "D_PAN") * 100 + 0.5)) or "-"
     V[3] = tr and string.format("%d%%", math.floor(r.GetMediaTrackInfo_Value(tr, "D_WIDTH") * 100 + 0.5)) or "-"
-    V[4] = string.format("%d/%d", math.min(#tracks, view.off + 1), #tracks)
+    V[4] = trackPos()
   end
   return L, V
 end
@@ -1058,7 +1070,7 @@ end
 -- input
 ---------------------------------------------------------------------------------------------------
 local lastPad, lastPadT = -1, 0
-local function selectTrack(tr)
+function selectTrack(tr)                         -- (local, declared above oxiOnly)
   view.focus = tr
   if oxiOnly() then return end                   -- option: the OXI keeps its own track, Reaper stays as it is
   r.SetOnlyTrackSelected(tr)
@@ -1066,6 +1078,17 @@ local function selectTrack(tr)
     r.SetMixerScroll(tr)
     r.Main_OnCommand(40913, 0)                    -- scroll the arrange view to the selected track
   end
+end
+function stepTrack(d)                            -- v8.19: select the previous/next track of the grid list
+  if #tracks == 0 then return end
+  local cur, k = selTrack(), nil
+  for i, t in ipairs(tracks) do if t == cur then k = i end end
+  if not k then k = d > 0 and view.off or view.off + 1 + rowsForTracks() end   -- nothing selected: start at the view
+  k = math.max(1, math.min(#tracks, k + d))
+  selectTrack(tracks[k])
+  local rows = rowsForTracks()                   -- keep it on the grid
+  if k - 1 < view.off then view.off = k - 1 elseif k - 1 >= view.off + rows then view.off = k - rows end
+  clampView()
 end
 local function onPad(p)
   view.vf = nil
@@ -1290,6 +1313,18 @@ local function connect()
   if oxiOut then send(SX_ENTER); sentPad, sentLed, lastDisp = {}, {}, "" end
 end
 local token, retired = tostring(math.random()) .. tostring(os.time()), false
+local lastSelMode
+local function syncSelMode()                     -- v8.19: switching "Auswahl" hands the track over once
+  if cfg.select == lastSelMode then return end
+  local was = lastSelMode
+  lastSelMode = cfg.select
+  if was == nil then return end
+  if was == "oxi" then                           -- OXI -> Reaper: Reaper takes the track the OXI had
+    if view.focus and r.ValidatePtr(view.focus, "MediaTrack*") then selectTrack(view.focus) end
+  elseif oxiOnly() then                          -- Reaper -> OXI: the OXI starts with Reaper's track
+    view.focus = r.GetSelectedTrack(0, 0)
+  end
+end
 local lastReaperSel
 local function followReaper()                    -- option: a track selected in Reaper scrolls the puzzle to it
   local rs = r.GetSelectedTrack(0, 0)
@@ -1311,6 +1346,7 @@ local function loop()
   if (not oxiIn or not oxiOut) and now - lastPortTry > 2 then lastPortTry = now; connect() end
   local rev = r.GetExtState(EXT, "rev")
   if rev ~= cfgRev then cfgRev = rev; loadCfg(); buildTracks(); clampView() end
+  syncSelMode()
   if oxiIn then readInput() end
   pollEncPush()
   if now - lastBuild > 0.25 then
@@ -1355,6 +1391,7 @@ local function main()
   buildTracks()
   lastReaperSel = r.GetSelectedTrack(0, 0)
   view.focus = lastReaperSel
+  lastSelMode = cfg.select
   local sel = selTrack()                         -- start with the selected track in the top row
   for i, t in ipairs(tracks) do if t == sel then view.off = i - 1 end end
   clampView()

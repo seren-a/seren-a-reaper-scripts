@@ -114,6 +114,13 @@ class Rig:
         self.btn(n, True)
         self.btn(n, False)
 
+    def view_off(self):                         # first track of the grid view (from the diagnostics output)
+        import re
+        self.L.execute(b'CONSOLE = ""; reaper.SetExtState("seren_OXI", "diag", "1")')
+        self.run(10)
+        m = re.search(r'Ansicht ab Spur (\d+)', self.g.CONSOLE.decode('utf-8'))
+        return int(m.group(1)) if m else None
+
     def knob(self, e, d):
         self.g.INPUT(bytes([0xB0, e - 1, d & 127]))
         self.run(1)
@@ -206,9 +213,12 @@ rig.run(30)
 check('OXI: Item' in [rig.g.UNDO[i].decode() for i in range(1, len(rig.g.UNDO) + 1)], 'Undo-Punkt nach dem Drehen')
 rig.knob(4, 1)
 lines = rig.text_lines()
-check(lines[4].split()[-1] == '2/14', f'Encoder 4: Ansicht eine Spur weiter ({lines[4]})')
-check(rig.grid.get((0, 0)) == (0, 15, 0) or rig.grid.get((0, 0)) == (0, 9, 0), f'Zeile 1 zeigt jetzt Gitarre ({rig.grid.get((0, 0))})')
+check(lines[4].split()[-1] == '3/14' and rig.tr(3).sel and not rig.tr(2).sel, f'Encoder 4 (v8.19): nächste Spur, auch in Reaper gewählt ({lines[4]})')
 rig.knob(4, -1)
+check(rig.tr(2).sel and not rig.tr(3).sel, 'Encoder 4 zurück: wieder Gitarre gewählt')
+rig.btn(17, True); rig.knob(4, 1); rig.btn(17, False)
+check(rig.tr(2).sel and rig.grid.get((0, 0)) in ((0, 15, 0), (0, 9, 0)), f'Shift + Encoder 4: nur die Ansicht rückt weiter, Zeile 1 = Gitarre ({rig.grid.get((0, 0))})')
+rig.btn(17, True); rig.knob(4, -1); rig.btn(17, False)
 
 # encoder pushes (state 1)
 cmds = lambda: [rig.g.CMDS[i] for i in range(1, len(rig.g.CMDS) + 1)]
@@ -362,7 +372,8 @@ check(seen == {'2 Gitarre mit einem s'}, f'Laufschrift aus: Name steht still ({s
 rig5 = Rig(SETUP + 'TRACKS[9].sel = true')
 rig5.L.execute(src[start:end].replace('local FONT', 'FONT_FOR_TEST').encode('utf-8'))
 rig5.run(5)
-check(rig5.grid.get((0, 0)) == rig5.grid.get((0, 0)) and rig5.text_lines()[4].split()[-1] == '7/14', f'Start: Ansicht beginnt bei der ausgewählten Spur ({rig5.text_lines()[4]})')
+vo = rig5.view_off()
+check(vo == 7 and rig5.text_lines()[4].split()[-1] == '9/14', f'Start: Ansicht beginnt bei der ausgewählten Spur (ab {vo}, {rig5.text_lines()[4]})')
 
 # follow Reaper / OXI-only selection
 rig5.L.execute(b'reaper.SetOnlyTrackSelected(TRACKS[1])'); rig5.run(3)
@@ -376,7 +387,21 @@ rig5.knob(1, 2)
 check(rig5.tr(2)[b'items'][2].vals.D_VOL > v0, 'nur OXI: Encoder wirken auf das OXI-Item')
 rig5.L.execute(b'reaper.SetExtState("seren_OXI", "select", "full"); reaper.SetExtState("seren_OXI", "follow", "0"); reaper.SetExtState("seren_OXI", "rev", "o2")'); rig5.run(2)
 rig5.L.execute(b'reaper.SetOnlyTrackSelected(TRACKS[12])'); rig5.run(3)
-check(rig5.text_lines()[4].split()[-1] == '1/14', 'Folgen aus: Ansicht bleibt stehen')
+vo = rig5.view_off()
+check(vo == 1, f'Folgen aus: Ansicht bleibt stehen (ab {vo})')
+
+# v8.19: switching "Auswahl" hands the track over; encoder 4 respects the mode
+r6 = Rig(SETUP)
+r6.L.execute(src[start:end].replace('local FONT', 'FONT_FOR_TEST').encode('utf-8'))
+r6.run(5)
+r6.L.execute(b'reaper.SetExtState("seren_OXI", "select", "oxi"); reaper.SetExtState("seren_OXI", "rev", "a1")'); r6.run(2)
+r6.pad(1, 1)
+r6.knob(4, 1)
+check(not r6.tr(3).sel and r6.text_lines()[4].split()[-1] == '3/14', f'nur OXI: Encoder 4 wechselt nur auf der OXI ({r6.text_lines()[4]})')
+r6.L.execute(b'reaper.SetExtState("seren_OXI", "select", "sel"); reaper.SetExtState("seren_OXI", "rev", "a2")'); r6.run(2)
+check(r6.tr(3).sel and not r6.tr(1).sel, 'nur OXI → Reaper: Reaper übernimmt die Spur der OXI')
+r6.knob(4, 1)
+check(r6.tr(4).sel, 'Reaper-Modus: Encoder 4 wählt die nächste Spur in Reaper')
 
 # exit
 n0 = len(rig.out())

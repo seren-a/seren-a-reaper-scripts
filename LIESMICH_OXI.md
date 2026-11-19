@@ -1,6 +1,6 @@
-# seren.a OXI Puzzle (v8.18) – OXI One MkII in Reaper
+# seren.a OXI Puzzle (v8.19) – OXI One MkII in Reaper
 
-Zwei Skripte in `3_Reaper/OXI/`:
+Zwei Skripte im Hauptordner dieses Branches (die Bausteine dazu liegen in `quellen/`):
 
 - `Reaper_OXI_Puzzle.lua` übernimmt die OXI One MkII im Remote-Modus (Grid, 4 Encoder, Display, Tasten).
 - `Reaper_OXI_Einstellungen.lua` ist das Einstellungsfenster. Es braucht ReaImGui (ReaPack > ReaTeam Extensions). Änderungen gelten sofort, das Puzzle läuft dabei weiter.
@@ -48,10 +48,10 @@ Die States wirken immer auf die ausgewählte Spur und ihre ausgewählten Items, 
 
 | State | Enc 1 | Enc 2 | Enc 3 | Enc 4 |
 | --- | --- | --- | --- | --- |
-| 1 Items | Gain (0,5 dB) | Fade-in (10 ms, schnell ×4) | Fade-out | Spur-Ansicht ±1 |
+| 1 Items | Gain (0,5 dB) | Fade-in (10 ms, schnell ×4) | Fade-out | Spur ±1 (Shift: nur Ansicht) |
 | 2–5 Sends 1–4 … 13–16 | Send-Pegel | Send | Send | Send |
 | 6 Item (Vorschlag) | Position (10 ms, Shift = 1 Schlag) | Pitch (1 HT, Shift 0,1) | Playrate | Länge |
-| 7 Spur (Vorschlag) | Volume | Pan | Breite | Spur-Ansicht ±1 |
+| 7 Spur (Vorschlag) | Volume | Pan | Breite | Spur ±1 (Shift: nur Ansicht) |
 
 **Pushes im State Items** (alle im Fenster frei belegbar, mit eingebauter Funktion oder einer Reaper-Aktions-ID):
 
@@ -64,6 +64,8 @@ Die States wirken immer auf die ausgewählte Spur und ihre ausgewählten Items, 
 Einfügen, Ersetzen und Entfernen gelten für alle ausgewählten Spuren.
 
 **Sends:** Ein Push schaltet den Send stumm, 2× schaltet Post ↔ Pre-Fader (Post-FX). Optional geht Pre-FX mit in die Runde, oder Push und 2× werden getauscht (Menü). Lang drücken setzt den Send auf 0 dB. Im Display steht der Name des Ziels, ein `*` heißt Pre.
+
+**Encoder 4 = Spur (seit v8.19):** Drehen wählt die vorige/nächste Spur, je nach „Auswahl“ auch in Reaper, und das Grid rückt mit, wenn sie aus dem Bild läuft. Mit Shift verschiebt Encoder 4 nur die Ansicht, wie vorher. Im Display steht die Spurnummer, z. B. „3/14“.
 
 **Item / Spur:** Ein Push setzt den Wert zurück (Pitch 0, Rate 1, 0 dB, Pan Mitte, Breite 100 %).
 
@@ -86,7 +88,7 @@ Nur im Fenster einstellbar: Reihenfolge der States, Belegung der Pushes, angepin
 
 ## Sends 16 / Sends 32
 
-Die Send-Seiten sind in **DrivenByMoss** als Mixer-Ansichten **Send 16** und **Send 32**, vertikal wie Mix 32, für Reaper seit v8.3 (moss4reaper, auf Basis 26.6.5). Paket, `bauen.sh` und Anleitung liegen in `Projekte/OXI ONE MK2/Moss Erweiterung/moss4reaper_send16-32/`. Im Puzzle-Skript gibt es sie nicht mehr.
+Die Send-Seiten sind in **DrivenByMoss** als Mixer-Ansichten **Send 16** und **Send 32**, vertikal wie Mix 32, für Reaper seit v8.3 (moss4reaper, auf Basis 26.6.5). Paket, `bauen.sh` und Anleitung liegen im Branch [`oxi-mk2-moss-extended`](https://github.com/seren-a/seren-a_cute-audio-tools/tree/oxi-mk2-moss-extended) von seren-a_cute-audio-tools. Im Puzzle-Skript gibt es sie nicht mehr.
 
 ## Spurtasten (die 8 Sequencer-Tasten links)
 
@@ -119,6 +121,7 @@ Im Menü (PAGE) schaltet **16/Left** oder **64/Right** zwischen den Seiten 1 und
 
 - **Beim Drehen** steht 1,5 s lang oben der Parametername und darunter groß der Wert, z. B. „Gain“ und „+1.0 dB“. Alternativ steht er in der untersten Zeile, oder beides. Ein Tastendruck holt sofort die normale Anzeige zurück.
 - **Auswahl:** In der Grundeinstellung wählt ein Push Spur und Item auch in Reaper aus, und Mixer und Arrangement springen hin. Mit „Reaper“ wird nur ausgewählt, ohne dass die Ansicht springt. Mit „nur OXI“ merkt sich die OXI Spur und Item selbst, in Reaper ändert sich nichts. Die Encoder wirken dann auf die OXI-Auswahl. FX/Sends einfügen, ersetzen und entfernen gilt dann nur für diese eine Spur. Die SWS-Aktionen wirken weiter auf die Auswahl in Reaper.
+- **Umschalten (seit v8.19):** Stellst du von „nur OXI“ auf „Reaper“ oder „+ Ansicht“, übernimmt Reaper einmal die Spur, die die OXI gerade hat. Umgekehrt startet „nur OXI“ mit der in Reaper gewählten Spur.
 - **Folgen:** Wählst du in Reaper eine Spur, die gerade nicht im Grid zu sehen ist, springt das Puzzle hin. Das lässt sich abschalten.
 - **Start:** Das Puzzle beginnt bei der in Reaper ausgewählten Spur. Sie steht oben bzw. so weit oben, wie es am Ende der Spurliste geht.
 - **Laufschrift:** Zu lange Spur- und Item-Namen laufen durch. Erst 1,5 s Pause, dann ein Zeichen alle 0,3 s, am Ende wieder Pause. Abschaltbar.
@@ -135,4 +138,4 @@ Im Fenster unter „Gerät“ gibt es die Taste **„Spurliste prüfen (Konsole)
 
 - Das Protokoll (Remote-Modus, Pad-LEDs, Tasten, 128×64-Display) stammt aus dem DrivenByMoss-Quellcode. Getestet ist alles mit einer nachgebauten OXI, an echter Hardware noch nicht. Seit v7.2 ist die oberste Pad-Reihe die erste Spur. Die v7.0/7.1 standen auf dem Kopf.
 - Die Pad-Farben haben je Farbkanal nur 4 Stufen, wie bei Moss.
-- Tests: `5_Werkzeug/oxi/test/test_puzzle.py` (Python + lupa), 83 Prüfungen.
+- Tests: `quellen/test/test_puzzle.py` (Python + lupa), 97 Prüfungen. `quellen/Reaper_OXI_Puzzle.lua` (und die Kopie im Hauptordner) ist `quellen/core.lua` mit `quellen/font.lua` an der Stelle `--@@FONT@@`.
