@@ -17,6 +17,8 @@ local settings = {
   last_used  = {},         -- "fxname<TAB>presetname" -> os.time()
   quick_params = "",       -- Komma-getrennte Parameter-Substrings fuer Quick-Anzeige
   trackname_template = "{preset}",  -- Platzhalter fuer den Umbenennen-Button
+  dedupe    = false,       -- Duplikate (gleicher Presetname) ausblenden
+  dup_pref  = "plugin",    -- bevorzugter Preset-Typ bei Duplikaten: "plugin" | "reaper"
 }
 
 local settings_scope = r.GetExtState(EXT_SECTION, "scope")
@@ -69,6 +71,8 @@ local function LoadSettings(scope)
   settings.last_used = {}
   settings.quick_params = ""
   settings.trackname_template = "{preset}"
+  settings.dedupe = false
+  settings.dup_pref = "plugin"
   if type(s) ~= "string" or s == "" then return end
   for line in s:gmatch("([^\n]*)\n?") do
     if line:find("^FILTER:") then
@@ -93,6 +97,11 @@ local function LoadSettings(scope)
       settings.quick_params = line:sub(#"QP:" + 1)
     elseif line:find("^TPL:") then
       settings.trackname_template = line:sub(#"TPL:" + 1)
+    elseif line:find("^DEDUP:") then
+      settings.dedupe = line:sub(#"DEDUP:" + 1) == "1"
+    elseif line:find("^PREF:") then
+      local m = line:sub(#"PREF:" + 1)
+      if m == "plugin" or m == "reaper" then settings.dup_pref = m end
     elseif line:find("^USED:") then
       local fxn, p, ts = line:sub(#"USED:" + 1):match("^([^\t]*)\t([^\t]*)\t(.*)$")
       if fxn and p then settings.last_used[fxn .. "\t" .. p] = tonumber(ts) or 0 end
@@ -101,7 +110,7 @@ local function LoadSettings(scope)
 end
 
 local function SaveSettings(settings_scope)
-  local t = { "FILTER:" .. settings.fx_filters, "SORT:" .. settings.sort_mode, "QP:" .. settings.quick_params, "TPL:" .. settings.trackname_template }
+  local t = { "FILTER:" .. settings.fx_filters, "SORT:" .. settings.sort_mode, "QP:" .. settings.quick_params, "TPL:" .. settings.trackname_template, "DEDUP:" .. (settings.dedupe and "1" or "0"), "PREF:" .. settings.dup_pref }
   for fxn, presets in pairs(settings.excluded) do
     local lst = {}
     for p in pairs(presets) do table.insert(lst, p) end
@@ -257,9 +266,9 @@ end
 local function GetPresetNames(track, fx)
   -- TrackFX_GetPresetIndex liefert 2 Werte: (curidx, numberOfPresets)
   local cur_idx, count = r.TrackFX_GetPresetIndex(track, fx)
-  if not count or count <= 0 then return nil, 0 end
+  if not count or count <= 0 then return nil end
   local key = r.GetTrackGUID(track) .. "|" .. fx .. "|" .. count
-  if preset_cache[key] then return preset_cache[key].names, count end
+  if preset_cache[key] then return preset_cache[key] end
 
   -- Namen durch einmaliges Durchschalten ermitteln (ein Undo-Schritt).
   -- Der Ausgangszustand wird danach VERIFIZIERT wiederhergestellt:
@@ -273,7 +282,7 @@ local function GetPresetNames(track, fx)
     local _, v = r.TrackFX_GetParam(track, fx, p)
     snapshot[p] = v
   end
-  local names = {}
+  local names, types = {}, {}
   local max_presets = 2048  -- Sicherheits-Cap gegen Endlos-Presets
   local n = math.min(count, max_presets)
   r.Undo_BeginBlock()
@@ -281,6 +290,13 @@ local function GetPresetNames(track, fx)
     if not r.TrackFX_SetPresetByIndex(track, fx, i) then break end
     local _, name = r.TrackFX_GetPreset(track, fx)
     names[i + 1] = name or ""
+    -- Preset-Typ fuer Duplikat-Rangfolge: User-Preset (.rpl) hat Dateinamen,
+    -- plugin-eigene Presets (AU/VST3/...) liefern ""
+    local upf = ""
+    if r.TrackFX_GetUserPresetFilename then
+      upf = PickStr(r.TrackFX_GetUserPresetFilename(track, fx))
+    end
+    types[i + 1] = (upf ~= "") and "reaper" or "plugin"
   end
   for p = 0, nparams - 1 do r.TrackFX_SetParam(track, fx, p, snapshot[p]) end
   if cur_idx and cur_idx >= 0 and cur_idx < n then
@@ -303,18 +319,16 @@ local function GetPresetNames(track, fx)
     if ok then break end
   end
   r.Undo_EndBlock("FX Preset Browser: Presetnamen lesen", -1)
-  if #names == 0 then return nil, 0 end
-  preset_cache[key] = { names = names }
-  return names, #names
+  if #names == 0 then return nil end
+  preset_cache[key] = { names = names, types = types }
+  return preset_cache[key]
 end
 
--- gecachte Namen ohne Enumeration (nil, wenn noch nicht geladen)
+-- gecachter Eintrag (names+types) ohne Enumeration (nil, wenn noch nicht geladen)
 local function CachedPresetNames(track, fx)
   local _, count = r.TrackFX_GetPresetIndex(track, fx)
-  if not count or count <= 0 then return nil, 0 end
-  local c = preset_cache[r.GetTrackGUID(track) .. "|" .. fx .. "|" .. count]
-  if c then return c.names, count end
-  return nil, count
+  if not count or count <= 0 then return nil end
+  return preset_cache[r.GetTrackGUID(track) .. "|" .. fx .. "|" .. count]
 end
 
 local function FindRule(trackname)
@@ -350,7 +364,30 @@ local function SortPresetList(list, fxname)
   -- "default" = Reihenfolge wie gehabt (Preset-Index)
 end
 
-local function BuildPresetList(track, fx, fxname, names, count)
+-- bei gleichem Presetnamen nur das ranghöchste Preset behalten:
+-- erst der bevorzugte Preset-Typ (Settings), dann das zuletzt verwendete
+-- (Datum, last_used), dann der höhere Preset-Index
+local function DedupePresets(list, fxname)
+  local function rank(e)
+    local preferred = (settings.dup_pref == "reaper") and (e.type == "reaper") or (settings.dup_pref == "plugin" and e.type == "plugin")
+    local trank = preferred and 2 or 1
+    local ts = settings.last_used[fxname .. "\t" .. e.name] or 0
+    return trank * 1e12 + ts * 1 + (e.idx or 0) * 1e-9
+  end
+  local best = {}
+  for _, p in ipairs(list) do
+    local k = p.name:lower()
+    if not best[k] or rank(p) > rank(best[k]) then best[k] = p end
+  end
+  local out = {}
+  for _, p in ipairs(list) do
+    if best[p.name:lower()] == p then table.insert(out, p) end
+  end
+  return out
+end
+
+local function BuildPresetList(track, fx, fxname, entry)
+  local names, types = entry.names, entry.types
   local cur_idx = r.TrackFX_GetPresetIndex(track, fx)
   local _, trackname = r.GetTrackName(track)
   local rule = FindRule(trackname)
@@ -365,15 +402,17 @@ local function BuildPresetList(track, fx, fxname, names, count)
   end
 
   local list = {}
-  for i = 1, count do
+  for i = 1, #names do
     local nm = names[i]
     local ok = true
     if allowed_set and not allowed_set[nm] then ok = false end
     if excl and excl[nm] then ok = false end
     if ok then
-      table.insert(list, { name = nm, idx = i - 1 })
+      table.insert(list, { name = nm, idx = i - 1, type = types[i] or "plugin" })
     end
   end
+  -- Duplikate (gleicher Name aus Plugin- und REAPER-Presets) ausblenden
+  if settings.dedupe then list = DedupePresets(list, fxname) end
   -- Sortierung gilt ueberall (Settings-Liste + Dropdowns in Browser/Overview)
   SortPresetList(list, fxname)
   -- Position des aktuellen Presets erst NACH dem Sortieren bestimmen
@@ -385,9 +424,9 @@ local function BuildPresetList(track, fx, fxname, names, count)
 end
 
 local function AllowedPresets(track, fx, fxname)
-  local names, count = GetPresetNames(track, fx)
-  if not names then return nil, nil end
-  return BuildPresetList(track, fx, fxname, names, count)
+  local entry = GetPresetNames(track, fx)
+  if not entry then return nil, nil end
+  return BuildPresetList(track, fx, fxname, entry)
 end
 
 -- Fingerprint aller Parameter, um "Preset geladen, aber veraendert" zu erkennen
@@ -422,10 +461,16 @@ local function PresetState(track, fx)
     end
     return st.name, ParamFingerprint(track, fx) ~= st.fp
   end
-  -- cur_idx < 0: veraenderter Zustand, Presetname vom letzten Laden nehmen
-  if st then return st.name, ParamFingerprint(track, fx) ~= st.fp end
-  local _, name = r.TrackFX_GetPreset(track, fx)
-  return name or "", false
+  -- cur_idx < 0: veraenderter Zustand, Presetname vom letzten Laden nehmen.
+  -- Auch hier MUSS verankert werden: Plugins, die dauerhaft cur_idx = -1
+  -- melden, haetten sonst nie einen Fingerprint-Anker und der *-Marker
+  -- wuerde nie erscheinen.
+  if not st then
+    local _, name = r.TrackFX_GetPreset(track, fx)
+    preset_fp[key] = { name = name or "", idx = -1, fp = ParamFingerprint(track, fx) }
+    return name or "", false
+  end
+  return st.name, ParamFingerprint(track, fx) ~= st.fp
 end
 
 local function MarkPresetLoaded(track, fx, name)
@@ -478,10 +523,10 @@ local function DrawPresetCombo(track, fx, label)
     -- Lazy: Presetnamen werden erst beim Oeffnen des Dropdowns enumeriert
     -- (GetPresetNames stellt den FX-Zustand verifiziert wieder her). Dadurch
     -- wird beim Laden des Scripts kein einziges FX durchgeschaltet.
-    local names, count = CachedPresetNames(track, fx)
+    local entry = CachedPresetNames(track, fx)
     local list, cur
-    if names then
-      list, cur = BuildPresetList(track, fx, fxname, names, count)
+    if entry then
+      list, cur = BuildPresetList(track, fx, fxname, entry)
     else
       list, cur = AllowedPresets(track, fx, fxname)
     end
@@ -821,6 +866,28 @@ local function DrawSettings()
 
     r.ImGui_Separator(ctx)
 
+    r.ImGui_Text(ctx, "Duplikate (gleicher Presetname bei Plugin- und REAPER-Presets):")
+    local chd, vd = r.ImGui_Checkbox(ctx, "nur ranghöchstes/neuestes Preset anzeigen", settings.dedupe)
+    if chd then
+      settings.dedupe = (vd == true or vd == 1)
+      SaveSettings(settings_scope)
+    end
+    r.ImGui_SameLine(ctx)
+    if r.ImGui_BeginCombo(ctx, "##duppref", settings.dup_pref == "reaper" and "REAPER (.rpl) bevorzugt" or "Plugin (AU/VST3) bevorzugt") then
+      if r.ImGui_Selectable(ctx, "Plugin (AU/VST3) bevorzugt", settings.dup_pref == "plugin") then
+        settings.dup_pref = "plugin"
+        SaveSettings(settings_scope)
+      end
+      if r.ImGui_Selectable(ctx, "REAPER (.rpl) bevorzugt", settings.dup_pref == "reaper") then
+        settings.dup_pref = "reaper"
+        SaveSettings(settings_scope)
+      end
+      r.ImGui_EndCombo(ctx)
+    end
+    r.ImGui_TextDisabled(ctx, "Bei gleichem Namen gewinnt der bevorzugte Preset-Typ, danach das zuletzt verwendete (Datum), dann der höhere Index.")
+
+    r.ImGui_Separator(ctx)
+
     r.ImGui_Text(ctx, "Trackname-Template:")
     local cht, vt = r.ImGui_InputTextWithHint(ctx, "##tpl", "{preset}  |  {p:azimuth}", settings.trackname_template)
     if cht then
@@ -897,11 +964,11 @@ local function DrawSettings()
       if track then
         -- volle Presetliste (nicht AllowedPresets), damit ausgeschlossene
         -- Presets sichtbar bleiben und per Klick/Drag wieder aktivierbar sind
-        local pnames = GetPresetNames(track, fx)
+        local entry = GetPresetNames(track, fx)
         local list
-        if pnames then
+        if entry then
           list = {}
-          for i, nm in ipairs(pnames) do list[i] = { name = nm, idx = i - 1 } end
+          for i, nm in ipairs(entry.names) do list[i] = { name = nm, idx = i - 1 } end
         end
         if list then
           settings.excluded[excl_sel_fxname] = settings.excluded[excl_sel_fxname] or {}
