@@ -38,12 +38,13 @@ ReaScript (Lua) für REAPER mit [ReaImGui](https://github.com/cfillion/reaimgui)
   - „Duplikate aufräumen (.rpl-Loser löschen)“: pro Duplikat-Gruppe gewinnt die Rangfolge (s. o.), verlierende **.rpl-Dateien werden gelöscht** (mit Sicherheits-Prompt). Plugin-eigene Presets (.aupreset/.vstpreset) kann ein Script nicht löschen – die bleiben sichtbar, werden aber per Dedupe-Checkbox ausgeblendet.
   - „Alle Plugin-Presets als .rpl speichern“: speichert jedes Plugin-Preset als .rpl in den User-Preset-Ordner des FX (überschreibt gleichnamige .rpl). **Hinweis:** die plugin-eigenen Formate (.aupreset/.vstpreset) kann nur das Plugin selbst schreiben – dafür gibt es im Script bewusst keinen Knopf.
 - **Settings-Layout:** in Sektionen mit Gold-Headern gegliedert (FX-Filter, Preset-Liste, Quick-Parameter, Trackname-Template, Ausschließen & Aufräumen, Track-Regeln, Darstellung & Speichern ganz unten mit Theme + Speicherort)
-- **Track-Regeln:** Erste Regel, deren Pattern im Tracknamen vorkommt, gewinnt. Erlaubte Presets als Komma-Liste, leer = alle.
+- **Track-Regeln (welche Presets pro Spur erlaubt sind):** Erste Regel, deren Pattern im Spur-Namen vorkommt, gewinnt. Spalte 2 = Komma-Liste der erlaubten Presets (leer = alle). Beispiel: Pattern `VO` + erlaubt `A_3m_30, B_6m_-30` → Spuren mit „VO“ im Namen zeigen im Dropdown nur diese beiden Presets.
+- **Presets ausschließen:** Liste mit Rahmen und fester Höhe – in der Ecke kleiner ziehen, dann scrollen. Klick = umschalten, Drag = malt auf alle berührten.
 - **Trackname-Template:** Platzhalter für den Umbenennen-Button, z. B. `{preset} | {p:azimuth}°`. `{preset}` = aktuelles Preset, `{p:Name}`/`{param:Name}` = formatierter Wert des ersten Parameters, dessen Name `Name` enthält (Substring, case-insensitive). Unbekannte Platzhalter und Freitext bleiben stehen. Leer = nur Presetname.
 
 
 ### Ergibt seit dem Wishlist-Update:
-- Preset-Dropdown zeigt "Name *", wenn Parameter gegenueber dem geladenen Preset veraendert (aber nicht gespeichert) sind – auch wenn direkt in REAPER am FX gedreht wurde (dann meldet REAPER cur_idx -1 / leeren Presetnamen, der Name wird aus dem letzten Preset rekonstruiert; der Fingerprint wird auch verankert, wenn das Plugin dauerhaft cur_idx -1 meldet)
+- Preset-Dropdown zeigt "Name *", wenn Parameter gegenueber dem geladenen Preset veraendert (aber nicht gespeichert) sind – der `*` steht zusätzlich direkt neben dem FX-Namen in Browser und Overview. Erkennung rein ueber Parameter-Fingerprint (robust gegen REAPER-7.x-Quirks bei cur_idx/GetPreset)
 - Haekchen "Auf alle Instanzen anwenden": Preset-Auswahl mit Sicherheits-Prompt (Sicher? N Instanzen ...) setzt das Preset auf alle FX-Instanzen mit gleichem Namen (ein Undo-Schritt)
 - Aktiver FX-Slot wird im Overview gold gehighlightet, die gesamte aktive Spur zusätzlich per Hintergrund-Rechteck
 - "Fokussiertem FX folgen" reagiert auch auf die Spur-Auswahl (erstes FX mit Filter); fokussiertes FX-Fenster hat Vorrang
