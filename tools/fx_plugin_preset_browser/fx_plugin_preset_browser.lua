@@ -543,34 +543,28 @@ local function ParamFingerprint(track, fx)
 end
 
 -- liefert (presetname, modified).
--- WICHTIG: Sobald ein Parameter veraendert wird, meldet REAPER cur_idx < 0
--- und TrackFX_GetPreset liefert "" (nicht mehr den Presetnamen). Deshalb
--- wird der zuletzt geladene Presetname ueber den Preset-Index rekonstruiert:
--- bei cur_idx >= 0 mit neuem Index wurde ein Preset geladen (Fingerprint
--- wird neu verankert), bei cur_idx < 0 wird der Fingerprint mit dem letzten
--- bekannten verglichen -> modified.
+-- modified wird AUSSCHLIESSLICH ueber den Parameter-Fingerprint erkannt -
+-- robust gegen API-Quirks (egal ob REAPER cur_idx auf -1 setzt oder nicht,
+-- egal ob GetPreset "" liefert). Neu verankert wird nur, wenn sich der
+-- Preset-Index ODER ein nicht-leerer Presetname geaendert hat (anderes
+-- Preset geladen) oder wir selbst eines gesetzt haben (MarkPresetLoaded).
 local function PresetState(track, fx)
   local key = r.GetTrackGUID(track) .. "|" .. fx
   local cur_idx = r.TrackFX_GetPresetIndex(track, fx)
+  local _, name = r.TrackFX_GetPreset(track, fx)
+  name = name or ""
+  local fp = ParamFingerprint(track, fx)
   local st = preset_fp[key]
-  if cur_idx >= 0 then
-    if not st or st.idx ~= cur_idx then
-      local _, name = r.TrackFX_GetPreset(track, fx)
-      preset_fp[key] = { name = name or "", idx = cur_idx, fp = ParamFingerprint(track, fx) }
-      return name or "", false
-    end
-    return st.name, ParamFingerprint(track, fx) ~= st.fp
-  end
-  -- cur_idx < 0: veraenderter Zustand, Presetname vom letzten Laden nehmen.
-  -- Auch hier MUSS verankert werden: Plugins, die dauerhaft cur_idx = -1
-  -- melden, haetten sonst nie einen Fingerprint-Anker und der *-Marker
-  -- wuerde nie erscheinen.
   if not st then
-    local _, name = r.TrackFX_GetPreset(track, fx)
-    preset_fp[key] = { name = name or "", idx = -1, fp = ParamFingerprint(track, fx) }
-    return name or "", false
+    preset_fp[key] = { name = name, idx = cur_idx, fp = fp }
+    return name, false
   end
-  return st.name, ParamFingerprint(track, fx) ~= st.fp
+  if (cur_idx >= 0 and cur_idx ~= st.idx) or (name ~= "" and name ~= st.name) then
+    local disp = (name ~= "") and name or st.name
+    preset_fp[key] = { name = disp, idx = cur_idx, fp = fp }
+    return disp, false
+  end
+  return st.name, fp ~= st.fp
 end
 
 local function MarkPresetLoaded(track, fx, name)
@@ -785,6 +779,14 @@ end
 local function DrawBrowser(track, fx)
   local _, fxname = r.TrackFX_GetFXName(track, fx)
   r.ImGui_Text(ctx, fxname)
+  -- *-Marker direkt neben dem FX-Namen (sichtbarer als nur in der Combo)
+  local _, bmod = PresetState(track, fx)
+  if bmod then
+    r.ImGui_SameLine(ctx)
+    r.ImGui_PushStyleColor(ctx, ColIdx("Col_Text"), 0xFFD700FF)
+    r.ImGui_Text(ctx, "*")
+    r.ImGui_PopStyleColor(ctx)
+  end
   r.ImGui_Separator(ctx)
 
   r.ImGui_Text(ctx, "Preset:")
@@ -873,6 +875,13 @@ local function DrawOverview()
             r.ImGui_PushID(ctx, i .. "_" .. f)
             r.ImGui_Indent(ctx, 12)
             r.ImGui_Text(ctx, fxname)
+            local _, omod = PresetState(track, f)
+            if omod then
+              r.ImGui_SameLine(ctx)
+              r.ImGui_PushStyleColor(ctx, ColIdx("Col_Text"), 0xFFD700FF)
+              r.ImGui_Text(ctx, "*")
+              r.ImGui_PopStyleColor(ctx)
+            end
             r.ImGui_SameLine(ctx)
             DrawPresetCombo(track, f, "##preset")
             r.ImGui_Unindent(ctx, 12)
@@ -1047,7 +1056,8 @@ local function DrawSettings()
           -- Klick = umschalten; Maus draggen ueber mehrere Eintraege malt
           -- denselben Zustand auf alle beruehrten Presets
           if not r.ImGui_IsMouseDown(ctx, 0) then excl_drag = nil end
-          if r.ImGui_BeginChild(ctx, "##excllist") then
+          -- Rahmen (Border=1) + feste Hoehe: in der Ecke kleiner ziehen, Liste scrollt
+          if r.ImGui_BeginChild(ctx, "##excllist", 0, 160, 1) then
             local changed = false
             for _, p in ipairs(list) do
               local is_excl = excl[p.name] == true
@@ -1065,7 +1075,7 @@ local function DrawSettings()
             r.ImGui_EndChild(ctx)
             if changed then SaveSettings(settings_scope) end
           end
-          r.ImGui_TextDisabled(ctx, "Klick = umschalten, Drag = malt auf alle beruehrten. Markiert = ausgeschlossen.")
+          r.ImGui_TextDisabled(ctx, "Klick = umschalten, Drag = malt auf alle beruehrten. Markiert = ausgeschlossen. (Liste hat Rahmen: in der Ecke kleiner ziehen, dann scrollen.)")
           r.ImGui_Spacing(ctx)
           if r.ImGui_Button(ctx, "Duplikate aufraeumen (.rpl-Loser loeschen)") then
             local plan = CleanupDuplicates(entry, excl_sel_fxname, false)
@@ -1096,8 +1106,8 @@ local function DrawSettings()
       end
     end
 
-    SectionHeader("Track-Regeln")
-    r.ImGui_TextDisabled(ctx, "Erste Regel, deren Pattern im Tracknamen vorkommt, gewinnt (leer = alle Presets).")
+    SectionHeader("Track-Regeln (welche Presets pro Spur erlaubt sind)")
+    r.ImGui_TextDisabled(ctx, "Erste Regel, deren Pattern im Spur-Namen vorkommt, gewinnt. Spalte 2 = Komma-Liste der erlaubten Presets (leer = alle).")
     for i, rule in ipairs(settings.rules) do
       r.ImGui_PushID(ctx, "rule" .. i)
       local ch1, p = r.ImGui_InputText(ctx, "##pat", rule.pattern)
@@ -1115,7 +1125,7 @@ local function DrawSettings()
     if r.ImGui_Button(ctx, "+ Regel hinzufuegen") then
       table.insert(settings.rules, { pattern = "", allowed = "" })
     end
-    r.ImGui_TextDisabled(ctx, 'Beispiel: Pattern "VO", erlaubt "Room A,Room B".')
+    r.ImGui_TextDisabled(ctx, 'Beispiel: Pattern "VO" + erlaubt "A_3m_30, B_6m_-30" -> Spuren mit "VO" im Namen zeigen nur diese beiden Presets im Dropdown.')
 
     SectionHeader("Darstellung & Speichern")
     r.ImGui_Text(ctx, "Theme:")
