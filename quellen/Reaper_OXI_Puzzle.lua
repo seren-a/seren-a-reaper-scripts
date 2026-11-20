@@ -2,7 +2,7 @@
 -- Grid: 8 tracks x up to 16 items ("Puzzle"), 4 encoders with switchable states, on-device menu (PAGE),
 -- settings window: Reaper_OXI_Einstellungen.lua (same ExtState). Protocol after DrivenByMoss (OXI One).
 local r = reaper
-local VERSION = "v8.21"
+local VERSION = "v8.22"
 local EXT = "seren_OXI"
 
 ---------------------------------------------------------------------------------------------------
@@ -158,7 +158,8 @@ local DEFAULTS = {
   seqMute = "1",             -- 2x track button = mute
   seqSolo = "1",             -- hold track button = solo
   seqState = "1",            -- track button LEDs: muted blinks slowly, solo fast, 2nd LED = rec arm
-  statusCol = "0",           -- last grid column = track status (colour / mute / solo / rec)
+  statusCol = "0", blinkSolo = "0", blinkMute = "0", blinkRec = "0",   -- v8.22: whole grid row blinks
+          -- last grid column = track status (colour / mute / solo / rec)
   turnShow = "big",          -- value while turning: big (lines 1-3) / line (bottom) / both / off
   marquee = "1",             -- long track / item names scroll
   select = "full",           -- full = select in Reaper + scroll mixer/arrange, sel = only select, oxi = only on the OXI
@@ -937,6 +938,10 @@ local function drawGrid()
       end
     end
   end
+  local now = r.time_precise()                   -- v8.22: same clock as the track buttons
+  local mutePh = math.floor(now / 0.4) % 2 == 0
+  local tt = now % 1.6
+  local flick = (tt < 0.1) or (tt >= 0.22 and tt < 0.32)
   local anySolo = false
   for t = 0, r.CountTracks(0) - 1 do if r.GetMediaTrackInfo_Value(r.GetTrack(0, t), "I_SOLO") > 0 then anySolo = true; break end end
   for k = 0, rowsForTracks() - 1 do
@@ -962,17 +967,28 @@ local function drawGrid()
             if (oxiOnly() and x == lastItem) or (not oxiOnly() and r.IsMediaItemSelected(x)) then f = 1 end
             if r.GetMediaItemInfo_Value(x, "B_MUTE") ~= 1 then allMuted = false end
           end
-          if allMuted then col, f = { 255, 255, 255 }, 0.05 elseif quiet then f = f * 0.4 end
+          if allMuted then col, f = { 255, 255, 255 }, 0.05 elseif quiet then col = { 255, 255, 255 } end   -- v8.22: grey
           set(row, c, scale(col, f))
         end
       end
       if cfg.statusCol == "1" and cfg.layout ~= "10s" then
-        local st
-        if r.GetMediaTrackInfo_Value(tr, "I_RECARM") == 1 then st = { 255, 30, 30 }
-        elseif r.GetMediaTrackInfo_Value(tr, "I_SOLO") > 0 then st = { 255, 230, 0 }
-        elseif r.GetMediaTrackInfo_Value(tr, "B_MUTE") == 1 then st = { 60, 60, 60 }
+        -- v8.22: blinks like the track buttons. Mute red, solo yellow (both 0.4 s on/off), rec pink with 2 flicks
+        local OFF, st = { 0, 0, 0 }, nil
+        local rec = r.GetMediaTrackInfo_Value(tr, "I_RECARM") == 1
+        if r.GetMediaTrackInfo_Value(tr, "B_MUTE") == 1 then st = mutePh and { 255, 0, 0 } or OFF
+        elseif r.GetMediaTrackInfo_Value(tr, "I_SOLO") > 0 then st = mutePh and { 255, 230, 0 } or OFF
+        elseif rec then st = { 255, 60, 200 }
         else st = scale(tcol, isSel and 1 or 0.35) end
+        if rec and flick then st = (st == OFF or st[1] ~= 255 or st[3] ~= 200) and { 255, 60, 200 } or OFF end
         set(row, 15, st)
+      end
+      -- v8.22 option: the whole row blinks while the track is soloed / muted / armed
+      local off = (cfg.blinkSolo == "1" and r.GetMediaTrackInfo_Value(tr, "I_SOLO") > 0 and not mutePh)
+        or (cfg.blinkMute == "1" and r.GetMediaTrackInfo_Value(tr, "B_MUTE") == 1 and not mutePh)
+        or (cfg.blinkRec == "1" and r.GetMediaTrackInfo_Value(tr, "I_RECARM") == 1 and flick)
+      if off then
+        local last = (cfg.statusCol == "1" and cfg.layout ~= "10s") and 14 or nCols - 1
+        for c = 0, last do set(row, c, { 0, 0, 0 }) end
       end
       if cfg.layout == "10s" then
         local sl = stateList()

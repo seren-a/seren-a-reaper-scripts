@@ -421,9 +421,19 @@ r8 = Rig(SETUP); r8.run(5)
 g0 = r8.grid.get((1, 1))
 r8.L.execute(b'TRACKS[1].vals.I_SOLO = 1'); r8.run(10)
 g1 = r8.grid.get((1, 1))
-check(g0 and g1 and sum(g1) < sum(g0), f'Solo auf Vox: Items von Gitarre dunkler ({g0} -> {g1})')
+check(g0 and g1 and g1[0] == g1[1] == g1[2] and g1 != g0, f'Solo auf Vox: Items von Gitarre grau ({g0} -> {g1})')
 r8.L.execute(b'TRACKS[1].vals.I_SOLO = 0; TRACKS[2].vals.B_MUTE = 1'); r8.run(10)
 check(r8.grid.get((1, 1)) == g1, f'Gitarre gemutet: gleiche Abdunklung ({r8.grid.get((1, 1))})')
+
+# v8.22: status column blinks, whole row blinks as an option
+r9 = Rig(SETUP + """
+TRACKS[2].vals.B_MUTE = 1
+reaper.SetExtState('seren_OXI', 'statusCol', '1', true); reaper.SetExtState('seren_OXI', 'blinkMute', '1', true)""")
+st, row = set(), set()
+for _ in range(40):
+    r9.run(1, 0.05); st.add(r9.grid.get((1, 15))); row.add(r9.grid.get((1, 1)))
+check((255, 0, 0) in st and len(st) == 2, f'Statusspalte: Mute blinkt rot ({st})')
+check(len(row) == 2, f'Option: ganze Zeile blinkt bei Mute ({row})')
 
 # exit
 n0 = len(rig.out())
