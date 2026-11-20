@@ -416,6 +416,15 @@ c0 = len(r7.g.CMDS); r7.enc_push(1, 'single'); r7.run(20)
 new = [r7.g.CMDS[i] for i in range(c0 + 1, len(r7.g.CMDS) + 1)]
 check(40295 in new, f'Push Zoom Region/Projekt: ohne Region ganzes Projekt ({new})')
 
+# v8.21: solo / mute dim the items of the other tracks
+r8 = Rig(SETUP); r8.run(5)
+g0 = r8.grid.get((1, 1))
+r8.L.execute(b'TRACKS[1].vals.I_SOLO = 1'); r8.run(10)
+g1 = r8.grid.get((1, 1))
+check(g0 and g1 and sum(g1) < sum(g0), f'Solo auf Vox: Items von Gitarre dunkler ({g0} -> {g1})')
+r8.L.execute(b'TRACKS[1].vals.I_SOLO = 0; TRACKS[2].vals.B_MUTE = 1'); r8.run(10)
+check(r8.grid.get((1, 1)) == g1, f'Gitarre gemutet: gleiche Abdunklung ({r8.grid.get((1, 1))})')
+
 # exit
 n0 = len(rig.out())
 rig.g.ATEXIT()

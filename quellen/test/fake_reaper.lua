@@ -57,6 +57,7 @@ function INPUT(buf, dev) SEQ = SEQ + 1; table.insert(INQ, 1, { SEQ, buf, dev or 
 
 function R.CountTracks() return #TRACKS end
 function R.GetTrack(_, i) return TRACKS[i + 1] end
+function R.GetParentTrack(t) return t.parent end
 function R.GetTrackName(t) return true, t.name end
 function R.GetTrackGUID(t) return t.guid end
 function R.GetTrackColor(t) return t.color end

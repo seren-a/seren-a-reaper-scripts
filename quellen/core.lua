@@ -2,7 +2,7 @@
 -- Grid: 8 tracks x up to 16 items ("Puzzle"), 4 encoders with switchable states, on-device menu (PAGE),
 -- settings window: Reaper_OXI_Einstellungen.lua (same ExtState). Protocol after DrivenByMoss (OXI One).
 local r = reaper
-local VERSION = "v8.20"
+local VERSION = "v8.21"
 local EXT = "seren_OXI"
 
 ---------------------------------------------------------------------------------------------------
@@ -326,6 +326,13 @@ local function trackAtRow(row)
   return tracks[view.off + k + 1]
 end
 local function oxiOnly() return cfg.select == "oxi" end
+local function inSolo(tr)                        -- soloed itself or inside a soloed folder
+  while tr do
+    if r.GetMediaTrackInfo_Value(tr, "I_SOLO") > 0 then return true end
+    tr = r.GetParentTrack(tr)
+  end
+  return false
+end
 local selectTrack, stepTrack                     -- defined under "input", used by the encoders before that
 local function selTrack()                        -- the track the encoders work on
   if oxiOnly() then
@@ -824,10 +831,14 @@ local function drawGrid()
       end
     end
   end
+  local anySolo = false
+  for t = 0, r.CountTracks(0) - 1 do if r.GetMediaTrackInfo_Value(r.GetTrack(0, t), "I_SOLO") > 0 then anySolo = true; break end end
   for k = 0, rowsForTracks() - 1 do
     local row = firstTrackRow() + k
     local tr = tracks[view.off + k + 1]
     if tr then
+      -- v8.21: like Reaper, items of muted tracks and (while something is soloed) of tracks not in solo are dimmed
+      local quiet = r.GetMediaTrackInfo_Value(tr, "B_MUTE") == 1 or (anySolo and not inSolo(tr))
       local tcol = rgbOf(r.GetTrackColor(tr)) or DEF_RGB
       local isSel = tr == sel or (not oxiOnly() and r.IsTrackSelected(tr))
       local cl = cellsOf(tr)
@@ -845,7 +856,7 @@ local function drawGrid()
             if (oxiOnly() and x == lastItem) or (not oxiOnly() and r.IsMediaItemSelected(x)) then f = 1 end
             if r.GetMediaItemInfo_Value(x, "B_MUTE") ~= 1 then allMuted = false end
           end
-          if allMuted then col, f = { 255, 255, 255 }, 0.05 end
+          if allMuted then col, f = { 255, 255, 255 }, 0.05 elseif quiet then f = f * 0.4 end
           set(row, c, scale(col, f))
         end
       end
