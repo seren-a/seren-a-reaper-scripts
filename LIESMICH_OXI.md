@@ -1,4 +1,4 @@
-# seren.a OXI Puzzle (v8.22) – OXI One MkII in Reaper
+# seren.a OXI Puzzle (v8.23) – OXI One MkII in Reaper
 
 Zwei Skripte im Hauptordner dieses Branches (die Bausteine dazu liegen in `quellen/`):
 
@@ -110,7 +110,7 @@ Shift und 3× lassen sich im Menü (Seite 2) abschalten, alle vier im Fenster.
 
 **Statusspalte (Option, seit v8.8, v8.22):** Spalte 16 im Grid zeigt jede Spur in ihrer Spurfarbe und blinkt wie die Spurtasten: Mute = rot, Solo = gelb (beide 0,4 s an/aus), Rec = pink mit zweimal kurz alle 1,6 s. Push = Mute, Shift + Push = Solo, 2× = Rec. Die Items haben dann 15 Spalten.
 
-**Ganze Zeile blinkt (Option, seit v8.22):** Im Fenster unter „Spurtasten“ einzeln für Solo, Mute und Rec abhakbar. Die Items der Zeile blinken dann im selben Takt.
+**Ganze Zeile blinkt (Option, seit v8.22):** Im Fenster unter „Spurtasten“ einzeln für Solo, Mute und Rec abhakbar. Die Items der Zeile blinken dann im selben Takt: bei Mute und Rec an/aus, bei Solo hell/dunkel wie die Spurtaste (seit v8.23, auch das Gelb der Statusspalte).
 
 ## Menü Seite 2
 
@@ -145,4 +145,4 @@ Im Fenster unter „Gerät“ gibt es die Taste **„Spurliste prüfen (Konsole)
 
 - Das Protokoll (Remote-Modus, Pad-LEDs, Tasten, 128×64-Display) stammt aus dem DrivenByMoss-Quellcode. Getestet ist alles mit einer nachgebauten OXI, an echter Hardware noch nicht. Seit v7.2 ist die oberste Pad-Reihe die erste Spur. Die v7.0/7.1 standen auf dem Kopf.
 - Die Pad-Farben haben je Farbkanal nur 4 Stufen, wie bei Moss.
-- Tests: `quellen/test/test_puzzle.py` (Python + lupa), 103 Prüfungen. `quellen/Reaper_OXI_Puzzle.lua` (und die Kopie im Hauptordner) ist `quellen/core.lua` mit `quellen/font.lua` an der Stelle `--@@FONT@@`.
+- Tests: `quellen/test/test_puzzle.py` (Python + lupa), 104 Prüfungen. `quellen/Reaper_OXI_Puzzle.lua` (und die Kopie im Hauptordner) ist `quellen/core.lua` mit `quellen/font.lua` an der Stelle `--@@FONT@@`.

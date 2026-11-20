@@ -435,6 +435,14 @@ for _ in range(40):
 check((255, 0, 0) in st and len(st) == 2, f'Statusspalte: Mute blinkt rot ({st})')
 check(len(row) == 2, f'Option: ganze Zeile blinkt bei Mute ({row})')
 
+r10 = Rig(SETUP + """
+TRACKS[2].vals.I_SOLO = 1
+reaper.SetExtState('seren_OXI', 'blinkSolo', '1', true)""")
+row = set()
+for _ in range(40):
+    r10.run(1, 0.05); row.add(r10.grid.get((1, 1)))
+check(len(row) == 2 and (0, 0, 0) not in row, f'Option Solo: Zeile wechselt hell/dunkel statt aus ({row})')
+
 # exit
 n0 = len(rig.out())
 rig.g.ATEXIT()

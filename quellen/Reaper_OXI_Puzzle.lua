@@ -2,7 +2,7 @@
 -- Grid: 8 tracks x up to 16 items ("Puzzle"), 4 encoders with switchable states, on-device menu (PAGE),
 -- settings window: Reaper_OXI_Einstellungen.lua (same ExtState). Protocol after DrivenByMoss (OXI One).
 local r = reaper
-local VERSION = "v8.22"
+local VERSION = "v8.23"
 local EXT = "seren_OXI"
 
 ---------------------------------------------------------------------------------------------------
@@ -976,15 +976,19 @@ local function drawGrid()
         local OFF, st = { 0, 0, 0 }, nil
         local rec = r.GetMediaTrackInfo_Value(tr, "I_RECARM") == 1
         if r.GetMediaTrackInfo_Value(tr, "B_MUTE") == 1 then st = mutePh and { 255, 0, 0 } or OFF
-        elseif r.GetMediaTrackInfo_Value(tr, "I_SOLO") > 0 then st = mutePh and { 255, 230, 0 } or OFF
+        elseif r.GetMediaTrackInfo_Value(tr, "I_SOLO") > 0 then st = mutePh and { 255, 230, 0 } or { 60, 50, 0 }   -- v8.23: hell/dunkel, nicht aus
         elseif rec then st = { 255, 60, 200 }
         else st = scale(tcol, isSel and 1 or 0.35) end
         if rec and flick then st = (st == OFF or st[1] ~= 255 or st[3] ~= 200) and { 255, 60, 200 } or OFF end
         set(row, 15, st)
       end
       -- v8.22 option: the whole row blinks while the track is soloed / muted / armed
-      local off = (cfg.blinkSolo == "1" and r.GetMediaTrackInfo_Value(tr, "I_SOLO") > 0 and not mutePh)
-        or (cfg.blinkMute == "1" and r.GetMediaTrackInfo_Value(tr, "B_MUTE") == 1 and not mutePh)
+      -- v8.23: solo like the track button (stays on, 2nd LED blinks): the row alternates bright / dim, not off
+      if cfg.blinkSolo == "1" and r.GetMediaTrackInfo_Value(tr, "I_SOLO") > 0 and not mutePh then
+        local last = (cfg.statusCol == "1" and cfg.layout ~= "10s") and 14 or nCols - 1
+        for c = 0, last do local w = want[row * 16 + c]; if w then set(row, c, scale(w, 0.3)) end end
+      end
+      local off = (cfg.blinkMute == "1" and r.GetMediaTrackInfo_Value(tr, "B_MUTE") == 1 and not mutePh)
         or (cfg.blinkRec == "1" and r.GetMediaTrackInfo_Value(tr, "I_RECARM") == 1 and flick)
       if off then
         local last = (cfg.statusCol == "1" and cfg.layout ~= "10s") and 14 or nCols - 1
