@@ -142,4 +142,4 @@ Im Fenster unter „Gerät“ gibt es die Taste **„Spurliste prüfen (Konsole)
 
 - Das Protokoll (Remote-Modus, Pad-LEDs, Tasten, 128×64-Display) stammt aus dem DrivenByMoss-Quellcode. Getestet ist alles mit einer nachgebauten OXI, an echter Hardware noch nicht. Seit v7.2 ist die oberste Pad-Reihe die erste Spur. Die v7.0/7.1 standen auf dem Kopf.
 - Die Pad-Farben haben je Farbkanal nur 4 Stufen, wie bei Moss.
-- Tests: `quellen/test/test_puzzle.py` (Python + lupa), 100 Prüfungen. `quellen/Reaper_OXI_Puzzle.lua` (und die Kopie im Hauptordner) ist `quellen/core.lua` mit `quellen/font.lua` an der Stelle `--@@FONT@@`.
+- Tests: `quellen/test/test_puzzle.py` (Python + lupa), 99 Prüfungen. `quellen/Reaper_OXI_Puzzle.lua` (und die Kopie im Hauptordner) ist `quellen/core.lua` mit `quellen/font.lua` an der Stelle `--@@FONT@@`.
