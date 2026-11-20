@@ -9,7 +9,7 @@ end
 
 local DEFAULTS = {
   port = "oxi", layout = "16", markerRow = "0", markerKind = "auto", cells = "auto", groups = "1", markerLane = "1", rgnRange = "", folders = "1", empty = "1", receives = "show", visible = "all",
-  pinned = "1", flip = "0", mainSend = "1", tripleVol = "1", seqMute = "1", seqSolo = "1", seqState = "1", statusCol = "0", blinkSolo = "0", blinkMute = "0", blinkRec = "0", turnShow = "big", marquee = "1", select = "full", follow = "1", states = "1,2,3,4,5,6,7", sendPush = "mute", preFx = "0", handover = "1", midiReset = "1",
+  pinned = "1", flip = "0", mainSend = "1", tripleVol = "1", seqMute = "1", seqSolo = "1", seqState = "1", statusCol = "0", blinkSolo = "0", blinkMute = "0", blinkRec = "0", statusBright = "1", turnShow = "big", marquee = "1", select = "full", follow = "1", states = "1,2,3,4,5,6,7", sendPush = "mute", preFx = "0", handover = "1", midiReset = "1",
   s1 = "_SWS_TAKESCHANMODE0", s2 = "_SWS_TAKESCHANMODE3", s3 = "normtrack", s4 = "zoomitem",
   d1 = "copyfx", d2 = "copysends", d3 = "", d4 = "",
   t1 = "", t2 = "", t3 = "", t4 = "",
@@ -143,6 +143,7 @@ local function frame()
     check("Spurtaste halten = Solo", "seqSolo")
     check("Spurtasten zeigen Mute (blinkt mit der E16), Solo (2. LED, gleicher Takt) und Rec (2× kurz, Pause)", "seqState")
     check("Letzte Grid-Spalte = Spurstatus (blinkt wie die Spurtasten: Mute rot, Solo gelb, Rec pink)", "statusCol")
+    radio("Helligkeit letzte Spalte:", "statusBright", { { "1", "100 %" }, { "0.7", "70 %" }, { "0.4", "40 %" }, { "0.2", "20 %" } })
     r.ImGui_Text(ctx, "Ganze Grid-Zeile blinkt bei:")
     r.ImGui_SameLine(ctx); check("Solo", "blinkSolo")
     r.ImGui_SameLine(ctx); check("Mute", "blinkMute")

@@ -2,7 +2,7 @@
 -- Grid: 8 tracks x up to 16 items ("Puzzle"), 4 encoders with switchable states, on-device menu (PAGE),
 -- settings window: Reaper_OXI_Einstellungen.lua (same ExtState). Protocol after DrivenByMoss (OXI One).
 local r = reaper
-local VERSION = "v8.23"
+local VERSION = "v8.24"
 local EXT = "seren_OXI"
 
 ---------------------------------------------------------------------------------------------------
@@ -53,6 +53,7 @@ local DEFAULTS = {
   seqSolo = "1",             -- hold track button = solo
   seqState = "1",            -- track button LEDs: muted blinks slowly, solo fast, 2nd LED = rec arm
   statusCol = "0", blinkSolo = "0", blinkMute = "0", blinkRec = "0",   -- v8.22: whole grid row blinks
+  statusBright = "1",        -- v8.24: brightness of the status column (1 / 0.7 / 0.4 / 0.2)
           -- last grid column = track status (colour / mute / solo / rec)
   turnShow = "big",          -- value while turning: big (lines 1-3) / line (bottom) / both / off
   marquee = "1",             -- long track / item names scroll
@@ -874,7 +875,7 @@ local function drawGrid()
         elseif rec then st = { 255, 60, 200 }
         else st = scale(tcol, isSel and 1 or 0.35) end
         if rec and flick then st = (st == OFF or st[1] ~= 255 or st[3] ~= 200) and { 255, 60, 200 } or OFF end
-        set(row, 15, st)
+        set(row, 15, scale(st, tonumber(cfg.statusBright) or 1))
       end
       -- v8.22 option: the whole row blinks while the track is soloed / muted / armed
       -- v8.23: solo like the track button (stays on, 2nd LED blinks): the row alternates bright / dim, not off

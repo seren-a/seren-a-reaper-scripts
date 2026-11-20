@@ -443,6 +443,10 @@ for _ in range(40):
     r10.run(1, 0.05); row.add(r10.grid.get((1, 1)))
 check(len(row) == 2 and (0, 0, 0) not in row, f'Option Solo: Zeile wechselt hell/dunkel statt aus ({row})')
 
+r11 = Rig(SETUP + "reaper.SetExtState('seren_OXI', 'statusCol', '1', true); reaper.SetExtState('seren_OXI', 'statusBright', '0.2', true)"); r11.run(5)
+r11b = Rig(SETUP + "reaper.SetExtState('seren_OXI', 'statusCol', '1', true)"); r11b.run(5)
+check(sum(r11.grid.get((0, 15), (0, 0, 0))) < sum(r11b.grid.get((0, 15), (0, 0, 0))), f'Helligkeit Statusspalte 20 % dunkler ({r11.grid.get((0, 15))} < {r11b.grid.get((0, 15))})')
+
 # exit
 n0 = len(rig.out())
 rig.g.ATEXIT()
