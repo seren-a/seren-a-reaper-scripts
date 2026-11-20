@@ -2,7 +2,7 @@
 -- Grid: 8 tracks x up to 16 items ("Puzzle"), 4 encoders with switchable states, on-device menu (PAGE),
 -- settings window: Reaper_OXI_Einstellungen.lua (same ExtState). Protocol after DrivenByMoss (OXI One).
 local r = reaper
-local VERSION = "v8.24"
+local VERSION = "v8.25"
 local EXT = "seren_OXI"
 
 ---------------------------------------------------------------------------------------------------
@@ -343,6 +343,8 @@ local function rgbOf(native)
   local rr, gg, bb = r.ColorFromNative(native & 0xFFFFFF)
   return { rr, gg, bb }
 end
+-- v8.25: blink tempos (half period in seconds). Mute calmer than before (was 0.4), loop/cycle region slower still
+local MUTE_BLINK, LOOP_BLINK = 0.6, 0.9
 local function scale(c, f) return { math.floor(c[1] * f), math.floor(c[2] * f), math.floor(c[3] * f) } end
 local DEF_RGB = { 120, 140, 160 }
 local function trName(tr)
@@ -918,7 +920,7 @@ local function drawGrid()
     local pos = r.GetPlayState() & 1 == 1 and r.GetPlayPosition() or r.GetCursorPosition()
     local ls, le = r.GetSet_LoopTimeRange2(0, false, true, 0, 0, false)
     local rep = r.GetSetRepeat(-1) == 1
-    local ph = math.floor(r.time_precise() / 0.4) % 2 == 0
+    local ph = math.floor(r.time_precise() / LOOP_BLINK) % 2 == 0
     for c = 0, nCols - 1 do
       local k = view.colOff + c + 1
       local m = ms[k]
@@ -940,7 +942,7 @@ local function drawGrid()
     end
   end
   local now = r.time_precise()                   -- v8.22: same clock as the track buttons
-  local mutePh = math.floor(now / 0.4) % 2 == 0
+  local mutePh = math.floor(now / MUTE_BLINK) % 2 == 0
   local tt = now % 1.6
   local flick = (tt < 0.1) or (tt >= 0.22 and tt < 0.32)
   local anySolo = false
@@ -1145,7 +1147,7 @@ local function drawLeds(force)
   local now = r.time_precise()
   -- v8.9: mute blinks in step with the E16 (0.4 s on / 0.4 s off, same clock), solo = 2nd LED,
   -- rec arm = two short flicks every 1.6 s on top of whatever the LED shows (inverts it briefly)
-  local mutePh = math.floor(now / 0.4) % 2 == 0
+  local mutePh = math.floor(now / MUTE_BLINK) % 2 == 0
   local t = now % 1.6
   local flick = (t < 0.1) or (t >= 0.22 and t < 0.32)
   for row = 0, 7 do

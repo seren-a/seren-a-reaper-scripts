@@ -1,4 +1,4 @@
-# seren.a OXI Puzzle (v8.24) – OXI One MkII in Reaper
+# seren.a OXI Puzzle (v8.25) – OXI One MkII in Reaper
 
 Zwei Skripte im Hauptordner dieses Branches (die Bausteine dazu liegen in `quellen/`):
 
@@ -105,6 +105,8 @@ Jede Taste wählt die Spur ihrer Grid-Zeile. Die LED leuchtet, wo eine Spur lieg
 - **3× Spurtaste:** Spur auf -inf, beim nächsten 3× wieder auf 0 dB. Das Mute vom 2. Druck wird dabei zurückgenommen.
 
 Shift und 3× lassen sich im Menü (Seite 2) abschalten, alle vier im Fenster.
+
+**Blink-Tempo (seit v8.25):** Mute blinkt ruhiger, 0,6 s an / 0,6 s aus (vorher 0,4 s, im Takt der E16). Der Loop-/Cycle-Bereich in der Marker-Zeile blinkt noch langsamer, 0,9 s.
 
 **Status auf den Spurtasten (seit v8.9):** Mute = blinkt im selben Takt wie die E16 (0,4 s an, 0,4 s aus). Solo = die zweite LED blinkt im selben Takt. Rec = alle 1,6 s zweimal kurz umgeschaltet, sonst zeigt die Taste weiter normal/Mute. Faden oder Farbe können die Spurtasten nicht: die OXI kennt dort nur an/aus, farbig und dimmbar sind nur die Pads.
 
