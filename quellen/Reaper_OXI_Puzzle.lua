@@ -2,7 +2,7 @@
 -- Grid: 8 tracks x up to 16 items ("Puzzle"), 4 encoders with switchable states, on-device menu (PAGE),
 -- settings window: Reaper_OXI_Einstellungen.lua (same ExtState). Protocol after DrivenByMoss (OXI One).
 local r = reaper
-local VERSION = "v8.25"
+local VERSION = "v8.26"
 local EXT = "seren_OXI"
 
 ---------------------------------------------------------------------------------------------------
@@ -343,8 +343,8 @@ local function rgbOf(native)
   local rr, gg, bb = r.ColorFromNative(native & 0xFFFFFF)
   return { rr, gg, bb }
 end
--- v8.25: blink tempos (half period in seconds). Mute calmer than before (was 0.4), loop/cycle region slower still
-local MUTE_BLINK, LOOP_BLINK = 0.6, 0.9
+-- v8.25: blink tempos (half period in seconds). Mute calmer than before (was 0.4), loop/cycle region back at 0.4
+local MUTE_BLINK, LOOP_BLINK = 0.6, 0.4
 local function scale(c, f) return { math.floor(c[1] * f), math.floor(c[2] * f), math.floor(c[3] * f) } end
 local DEF_RGB = { 120, 140, 160 }
 local function trName(tr)
