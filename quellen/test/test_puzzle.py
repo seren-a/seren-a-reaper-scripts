@@ -441,7 +441,7 @@ reaper.SetExtState('seren_OXI', 'blinkSolo', '1', true)""")
 row = set()
 for _ in range(40):
     r10.run(1, 0.05); row.add(r10.grid.get((1, 1)))
-check(len(row) == 2 and (0, 0, 0) not in row, f'Option Solo: Zeile wechselt hell/dunkel statt aus ({row})')
+check(len(row) == 2 and (255, 255, 255) in row and (0, 0, 0) not in row, f'Option Solo: Zeile blitzt kurz weiß auf, geht nie aus ({row})')
 
 r11 = Rig(SETUP + "reaper.SetExtState('seren_OXI', 'statusCol', '1', true); reaper.SetExtState('seren_OXI', 'statusBright', '0.2', true)"); r11.run(5)
 r11b = Rig(SETUP + "reaper.SetExtState('seren_OXI', 'statusCol', '1', true)"); r11b.run(5)

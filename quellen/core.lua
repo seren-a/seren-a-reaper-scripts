@@ -2,7 +2,7 @@
 -- Grid: 8 tracks x up to 16 items ("Puzzle"), 4 encoders with switchable states, on-device menu (PAGE),
 -- settings window: Reaper_OXI_Einstellungen.lua (same ExtState). Protocol after DrivenByMoss (OXI One).
 local r = reaper
-local VERSION = "v8.26"
+local VERSION = "v8.27"
 local EXT = "seren_OXI"
 
 ---------------------------------------------------------------------------------------------------
@@ -839,6 +839,9 @@ local function drawGrid()
   local mutePh = math.floor(now / MUTE_BLINK) % 2 == 0
   local tt = now % 1.6
   local flick = (tt < 0.1) or (tt >= 0.22 and tt < 0.32)
+  -- v8.27: solo as the track button really looks (video): a short flash once per mute cycle, otherwise steady
+  local sp = now % (2 * MUTE_BLINK)
+  local soloFlash = sp >= 0.1 and sp < 0.3
   local anySolo = false
   for t = 0, r.CountTracks(0) - 1 do if r.GetMediaTrackInfo_Value(r.GetTrack(0, t), "I_SOLO") > 0 then anySolo = true; break end end
   for k = 0, rowsForTracks() - 1 do
@@ -873,17 +876,17 @@ local function drawGrid()
         local OFF, st = { 0, 0, 0 }, nil
         local rec = r.GetMediaTrackInfo_Value(tr, "I_RECARM") == 1
         if r.GetMediaTrackInfo_Value(tr, "B_MUTE") == 1 then st = mutePh and { 255, 0, 0 } or OFF
-        elseif r.GetMediaTrackInfo_Value(tr, "I_SOLO") > 0 then st = mutePh and { 255, 230, 0 } or { 60, 50, 0 }   -- v8.23: hell/dunkel, nicht aus
+        elseif r.GetMediaTrackInfo_Value(tr, "I_SOLO") > 0 then st = soloFlash and { 255, 255, 255 } or { 255, 230, 0 }   -- v8.27: steady yellow, short white flash
         elseif rec then st = { 255, 60, 200 }
         else st = scale(tcol, isSel and 1 or 0.35) end
         if rec and flick then st = (st == OFF or st[1] ~= 255 or st[3] ~= 200) and { 255, 60, 200 } or OFF end
         set(row, 15, scale(st, tonumber(cfg.statusBright) or 1))
       end
       -- v8.22 option: the whole row blinks while the track is soloed / muted / armed
-      -- v8.23: solo like the track button (stays on, 2nd LED blinks): the row alternates bright / dim, not off
-      if cfg.blinkSolo == "1" and r.GetMediaTrackInfo_Value(tr, "I_SOLO") > 0 and not mutePh then
+      -- v8.27: solo like the track button: steady, short flash (items light up white) once per cycle
+      if cfg.blinkSolo == "1" and r.GetMediaTrackInfo_Value(tr, "I_SOLO") > 0 and soloFlash then
         local last = (cfg.statusCol == "1" and cfg.layout ~= "10s") and 14 or nCols - 1
-        for c = 0, last do local w = want[row * 16 + c]; if w then set(row, c, scale(w, 0.3)) end end
+        for c = 0, last do if want[row * 16 + c] then set(row, c, { 255, 255, 255 }) end end
       end
       local off = (cfg.blinkMute == "1" and r.GetMediaTrackInfo_Value(tr, "B_MUTE") == 1 and not mutePh)
         or (cfg.blinkRec == "1" and r.GetMediaTrackInfo_Value(tr, "I_RECARM") == 1 and flick)
