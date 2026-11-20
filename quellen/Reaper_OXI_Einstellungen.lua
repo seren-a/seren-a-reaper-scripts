@@ -9,7 +9,7 @@ end
 
 local DEFAULTS = {
   port = "oxi", layout = "16", markerRow = "0", markerKind = "auto", cells = "auto", groups = "1", markerLane = "1", rgnRange = "", folders = "1", empty = "1", receives = "show", visible = "all",
-  pinned = "1", flip = "0", mainSend = "1", tripleVol = "1", seqMute = "1", seqSolo = "1", seqState = "1", statusCol = "0", blinkSolo = "0", blinkMute = "0", blinkRec = "0", statusBright = "1", flashBright = "0.4", turnShow = "big", marquee = "1", select = "full", follow = "1", states = "1,2,3,4,5,6,7", sendPush = "mute", preFx = "0", handover = "1", midiReset = "1",
+  pinned = "1", flip = "0", mainSend = "1", tripleVol = "1", seqMute = "1", seqSolo = "1", seqState = "1", statusCol = "0", blinkSolo = "0", blinkMute = "0", blinkRec = "0", statusBright = "1", flashBright = "0.4", seqColors = "FF00FF,6040FF,4060FF,FFE000,FF4040,FF00C0,00A0FF,00FF80", turnShow = "big", marquee = "1", select = "full", follow = "1", states = "1,2,3,4,5,6,7", sendPush = "mute", preFx = "0", handover = "1", midiReset = "1",
   s1 = "_SWS_TAKESCHANMODE0", s2 = "_SWS_TAKESCHANMODE3", s3 = "normtrack", s4 = "zoomitem",
   d1 = "copyfx", d2 = "copysends", d3 = "", d4 = "",
   t1 = "", t2 = "", t3 = "", t4 = "",
@@ -145,6 +145,9 @@ local function frame()
     check("Letzte Grid-Spalte = Spurstatus (blinkt wie die Spurtasten: Mute rot, Solo gelb, Rec pink)", "statusCol")
     radio("Helligkeit letzte Spalte:", "statusBright", { { "1", "100 %" }, { "0.7", "70 %" }, { "0.4", "40 %" }, { "0.2", "20 %" } })
     radio("Helligkeit Solo-Blitz (gelb, für Zeile und Spalte gleich):", "flashBright", { { "1", "100 %" }, { "0.7", "70 %" }, { "0.4", "40 %" }, { "0.2", "20 %" } })
+    r.ImGui_SetNextItemWidth(ctx, 420)
+    local chc, sc = r.ImGui_InputText(ctx, "Farben der Spurtasten 1-8 an der OXI (Hex, für Solo in der letzten Spalte)", get("seqColors"))
+    if chc then set("seqColors", sc) end
     r.ImGui_Text(ctx, "Ganze Grid-Zeile blinkt bei:")
     r.ImGui_SameLine(ctx); check("Solo", "blinkSolo")
     r.ImGui_SameLine(ctx); check("Mute", "blinkMute")

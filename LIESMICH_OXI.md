@@ -1,4 +1,4 @@
-# seren.a OXI Puzzle (v8.29) – OXI One MkII in Reaper
+# seren.a OXI Puzzle (v8.30) – OXI One MkII in Reaper
 
 Zwei Skripte im Hauptordner dieses Branches (die Bausteine dazu liegen in `quellen/`):
 
@@ -106,11 +106,11 @@ Jede Taste wählt die Spur ihrer Grid-Zeile. Die LED leuchtet, wo eine Spur lieg
 
 Shift und 3× lassen sich im Menü (Seite 2) abschalten, alle vier im Fenster.
 
-**Blink-Tempo (seit v8.25):** Mute blinkt ruhiger, 0,6 s an / 0,6 s aus (vorher 0,4 s, im Takt der E16). Der Loop-/Cycle-Bereich in der Marker-Zeile blinkt mit 0,4 s (v8.29).
+**Blink-Tempo (seit v8.25):** Mute blinkt ruhiger, 0,6 s an / 0,6 s aus (vorher 0,4 s, im Takt der E16). Der Loop-/Cycle-Bereich in der Marker-Zeile blinkt mit 0,4 s (v8.30).
 
 **Status auf den Spurtasten (seit v8.9):** Mute = blinkt im selben Takt wie die E16 (0,4 s an, 0,4 s aus). Solo = die zweite LED blinkt im selben Takt. Rec = alle 1,6 s zweimal kurz umgeschaltet, sonst zeigt die Taste weiter normal/Mute. Faden oder Farbe können die Spurtasten nicht: die OXI kennt dort nur an/aus, farbig und dimmbar sind nur die Pads.
 
-**Statusspalte (Option, seit v8.8, v8.22):** Spalte 16 im Grid zeigt jede Spur in ihrer Spurfarbe und blinkt wie die Spurtasten: Mute = rot, Solo = gelb (beide 0,4 s an/aus), Rec = pink mit zweimal kurz alle 1,6 s. Push = Mute, Shift + Push = Solo, 2× = Rec. Die Items haben dann 15 Spalten. Die Helligkeit der Spalte stellst du im Fenster ein (100/70/40/20 %, seit v8.24).
+**Statusspalte (Option, seit v8.8, v8.22):** Spalte 16 im Grid zeigt jede Spur in ihrer Spurfarbe und blinkt wie die Spurtasten: Mute = rot, Solo = gelb (beide 0,4 s an/aus), Rec = pink mit zweimal kurz alle 1,6 s. Push = Mute, Shift + Push = Solo, 2× = Rec. Die Items haben dann 15 Spalten. Bei Solo steht die Spalte in der Farbe der OXI-Spurtaste dieser Zeile und blitzt gelb (seit v8.30; die 8 Farben sind im Fenster als Hex-Liste einstellbar, falls sie nicht genau passen). Die Helligkeit der Spalte stellst du im Fenster ein (100/70/40/20 %, seit v8.24).
 
 **Ganze Zeile blinkt (Option, seit v8.22):** Im Fenster unter „Spurtasten“ einzeln für Solo, Mute und Rec abhakbar. Die Items der Zeile blinken dann im selben Takt: bei Mute und Rec an/aus, bei Solo wie die Spurtaste: bleibt an und blitzt einmal pro Takt (1,2 s) kurz gelb auf, gleichzeitig mit der Spurtaste, aber kürzer (0,12 s). Die Helligkeit des Blitzes ist eigens einstellbar und für Zeile und Statusspalte gleich (seit v8.29).
 

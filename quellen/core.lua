@@ -2,7 +2,7 @@
 -- Grid: 8 tracks x up to 16 items ("Puzzle"), 4 encoders with switchable states, on-device menu (PAGE),
 -- settings window: Reaper_OXI_Einstellungen.lua (same ExtState). Protocol after DrivenByMoss (OXI One).
 local r = reaper
-local VERSION = "v8.29"
+local VERSION = "v8.30"
 local EXT = "seren_OXI"
 
 ---------------------------------------------------------------------------------------------------
@@ -54,7 +54,8 @@ local DEFAULTS = {
   seqState = "1",            -- track button LEDs: muted blinks slowly, solo fast, 2nd LED = rec arm
   statusCol = "0", blinkSolo = "0", blinkMute = "0", blinkRec = "0",   -- v8.22: whole grid row blinks
   statusBright = "1",
-  flashBright = "0.4",       -- v8.29: peak of the yellow solo flash, the same for items and status column        -- v8.24: brightness of the status column (1 / 0.7 / 0.4 / 0.2)
+  flashBright = "0.4",
+  seqColors = "FF00FF,6040FF,4060FF,FFE000,FF4040,FF00C0,00A0FF,00FF80",   -- v8.30: colours of the 8 OXI track buttons (hardware)       -- v8.29: peak of the yellow solo flash, the same for items and status column        -- v8.24: brightness of the status column (1 / 0.7 / 0.4 / 0.2)
           -- last grid column = track status (colour / mute / solo / rec)
   turnShow = "big",          -- value while turning: big (lines 1-3) / line (bottom) / both / off
   marquee = "1",             -- long track / item names scroll
@@ -240,6 +241,14 @@ local function rgbOf(native)
 end
 -- v8.25: blink tempos (half period in seconds). Mute calmer than before (was 0.4), loop/cycle region back at 0.4
 local MUTE_BLINK, LOOP_BLINK = 0.6, 0.4
+local function seqColor(row)                      -- v8.30: OXI's own colour of track button row+1 (setting seqColors)
+  local k = 0
+  for h in (cfg.seqColors or ""):gmatch("%x%x%x%x%x%x") do
+    k = k + 1
+    if k == row + 1 then return { tonumber(h:sub(1, 2), 16), tonumber(h:sub(3, 4), 16), tonumber(h:sub(5, 6), 16) } end
+  end
+  return { 255, 230, 0 }
+end
 local function scale(c, f) return { math.floor(c[1] * f), math.floor(c[2] * f), math.floor(c[3] * f) } end
 local DEF_RGB = { 120, 140, 160 }
 local function trName(tr)
@@ -878,7 +887,7 @@ local function drawGrid()
         local OFF, st = { 0, 0, 0 }, nil
         local rec = r.GetMediaTrackInfo_Value(tr, "I_RECARM") == 1
         if r.GetMediaTrackInfo_Value(tr, "B_MUTE") == 1 then st = mutePh and { 255, 0, 0 } or OFF
-        elseif r.GetMediaTrackInfo_Value(tr, "I_SOLO") > 0 then st = { 255, 230, 0 }
+        elseif r.GetMediaTrackInfo_Value(tr, "I_SOLO") > 0 then st = seqColor(row)   -- v8.30: colour of the OXI track button, flash = yellow
         elseif rec then st = { 255, 60, 200 }
         else st = scale(tcol, isSel and 1 or 0.35) end
         if rec and flick then st = (st == OFF or st[1] ~= 255 or st[3] ~= 200) and { 255, 60, 200 } or OFF end
