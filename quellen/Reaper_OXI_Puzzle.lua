@@ -2,7 +2,7 @@
 -- Grid: 8 tracks x up to 16 items ("Puzzle"), 4 encoders with switchable states, on-device menu (PAGE),
 -- settings window: Reaper_OXI_Einstellungen.lua (same ExtState). Protocol after DrivenByMoss (OXI One).
 local r = reaper
-local VERSION = "v8.28"
+local VERSION = "v8.29"
 local EXT = "seren_OXI"
 
 ---------------------------------------------------------------------------------------------------
@@ -159,7 +159,8 @@ local DEFAULTS = {
   seqSolo = "1",             -- hold track button = solo
   seqState = "1",            -- track button LEDs: muted blinks slowly, solo fast, 2nd LED = rec arm
   statusCol = "0", blinkSolo = "0", blinkMute = "0", blinkRec = "0",   -- v8.22: whole grid row blinks
-  statusBright = "1",        -- v8.24: brightness of the status column (1 / 0.7 / 0.4 / 0.2)
+  statusBright = "1",
+  flashBright = "0.4",       -- v8.29: peak of the yellow solo flash, the same for items and status column        -- v8.24: brightness of the status column (1 / 0.7 / 0.4 / 0.2)
           -- last grid column = track status (colour / mute / solo / rec)
   turnShow = "big",          -- value while turning: big (lines 1-3) / line (bottom) / both / off
   marquee = "1",             -- long track / item names scroll
@@ -946,8 +947,9 @@ local function drawGrid()
   local tt = now % 1.6
   local flick = (tt < 0.1) or (tt >= 0.22 and tt < 0.32)
   -- v8.27: solo as the track button really looks (video): a short flash once per mute cycle, otherwise steady
-  local sp = now % (2 * MUTE_BLINK)
-  local soloFlash = sp >= 0.1 and sp < 0.3
+  -- v8.29: starts with the track button (2nd LED on), but shorter: the pad rims let more light through
+  local soloFlash = now % (2 * MUTE_BLINK) < 0.12
+  local FLASH = scale({ 255, 230, 0 }, tonumber(cfg.flashBright) or 0.4)
   local anySolo = false
   for t = 0, r.CountTracks(0) - 1 do if r.GetMediaTrackInfo_Value(r.GetTrack(0, t), "I_SOLO") > 0 then anySolo = true; break end end
   for k = 0, rowsForTracks() - 1 do
@@ -982,20 +984,19 @@ local function drawGrid()
         local OFF, st = { 0, 0, 0 }, nil
         local rec = r.GetMediaTrackInfo_Value(tr, "I_RECARM") == 1
         if r.GetMediaTrackInfo_Value(tr, "B_MUTE") == 1 then st = mutePh and { 255, 0, 0 } or OFF
-        elseif r.GetMediaTrackInfo_Value(tr, "I_SOLO") > 0 then st = soloFlash and { 160, 160, 120 } or { 255, 230, 0 }   -- v8.28: steady yellow, short soft flash
+        elseif r.GetMediaTrackInfo_Value(tr, "I_SOLO") > 0 then st = { 255, 230, 0 }
         elseif rec then st = { 255, 60, 200 }
         else st = scale(tcol, isSel and 1 or 0.35) end
         if rec and flick then st = (st == OFF or st[1] ~= 255 or st[3] ~= 200) and { 255, 60, 200 } or OFF end
-        set(row, 15, scale(st, tonumber(cfg.statusBright) or 1))
+        st = scale(st, tonumber(cfg.statusBright) or 1)
+        if soloFlash and r.GetMediaTrackInfo_Value(tr, "I_SOLO") > 0 and not (rec and flick) then st = FLASH end
+        set(row, 15, st)
       end
       -- v8.22 option: the whole row blinks while the track is soloed / muted / armed
       -- v8.27: solo like the track button: steady, short flash (items light up white) once per cycle
       if cfg.blinkSolo == "1" and r.GetMediaTrackInfo_Value(tr, "I_SOLO") > 0 and soloFlash then
         local last = (cfg.statusCol == "1" and cfg.layout ~= "10s") and 14 or nCols - 1
-        for c = 0, last do                       -- v8.28: one step brighter in its own colour, not full white
-          local w = want[row * 16 + c]
-          if w then set(row, c, { math.min(255, w[1] * 1.8), math.min(255, w[2] * 1.8), math.min(255, w[3] * 1.8) }) end
-        end
+        for c = 0, last do if want[row * 16 + c] then set(row, c, FLASH) end end   -- v8.29: yellow peak
       end
       local off = (cfg.blinkMute == "1" and r.GetMediaTrackInfo_Value(tr, "B_MUTE") == 1 and not mutePh)
         or (cfg.blinkRec == "1" and r.GetMediaTrackInfo_Value(tr, "I_RECARM") == 1 and flick)
