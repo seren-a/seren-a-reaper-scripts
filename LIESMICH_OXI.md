@@ -1,4 +1,4 @@
-# seren.a OXI Puzzle (v8.19) – OXI One MkII in Reaper
+# seren.a OXI Puzzle (v8.20) – OXI One MkII in Reaper
 
 Zwei Skripte im Hauptordner dieses Branches (die Bausteine dazu liegen in `quellen/`):
 
@@ -64,6 +64,10 @@ Die States wirken immer auf die ausgewählte Spur und ihre ausgewählten Items, 
 Einfügen, Ersetzen und Entfernen gelten für alle ausgewählten Spuren.
 
 **Sends:** Ein Push schaltet den Send stumm, 2× schaltet Post ↔ Pre-Fader (Post-FX). Optional geht Pre-FX mit in die Runde, oder Push und 2× werden getauscht (Menü). Lang drücken setzt den Send auf 0 dB. Im Display steht der Name des Ziels, ein `*` heißt Pre.
+
+**Drehen frei belegen (seit v8.20):** Im Fenster unter „Encoder-Drehen im State Items“ wählst du für jeden Encoder: Standard (Gain / Fade-in / Fade-out / Spur), Scroll horizontal, Scroll vertikal, Zoom horizontal, Zoom vertikal oder Spur ±1. Das Display zeigt dann den Namen der Funktion.
+
+**Zoom-Umschalter für die Pushes (seit v8.20):** In der Push-Liste gibt es zwei Umschalter mit je zwei Zuständen. „Zoom Item ↔ zurück“ zoomt aufs Item, beim nächsten Druck zurück zur Ansicht davor. „Zoom Region ↔ Projekt“ zoomt auf die Region am Item (oder am Cursor), beim nächsten Druck aufs ganze Projekt.
 
 **Encoder 4 = Spur (seit v8.19):** Drehen wählt die vorige/nächste Spur, je nach „Auswahl“ auch in Reaper, und das Grid rückt mit, wenn sie aus dem Bild läuft. Mit Shift verschiebt Encoder 4 nur die Ansicht, wie vorher. Im Display steht die Spurnummer, z. B. „3/14“.
 
@@ -138,4 +142,4 @@ Im Fenster unter „Gerät“ gibt es die Taste **„Spurliste prüfen (Konsole)
 
 - Das Protokoll (Remote-Modus, Pad-LEDs, Tasten, 128×64-Display) stammt aus dem DrivenByMoss-Quellcode. Getestet ist alles mit einer nachgebauten OXI, an echter Hardware noch nicht. Seit v7.2 ist die oberste Pad-Reihe die erste Spur. Die v7.0/7.1 standen auf dem Kopf.
 - Die Pad-Farben haben je Farbkanal nur 4 Stufen, wie bei Moss.
-- Tests: `quellen/test/test_puzzle.py` (Python + lupa), 97 Prüfungen. `quellen/Reaper_OXI_Puzzle.lua` (und die Kopie im Hauptordner) ist `quellen/core.lua` mit `quellen/font.lua` an der Stelle `--@@FONT@@`.
+- Tests: `quellen/test/test_puzzle.py` (Python + lupa), 100 Prüfungen. `quellen/Reaper_OXI_Puzzle.lua` (und die Kopie im Hauptordner) ist `quellen/core.lua` mit `quellen/font.lua` an der Stelle `--@@FONT@@`.

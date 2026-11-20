@@ -403,6 +403,19 @@ check(r6.tr(3).sel and not r6.tr(1).sel, 'nur OXI → Reaper: Reaper übernimmt 
 r6.knob(4, 1)
 check(r6.tr(4).sel, 'Reaper-Modus: Encoder 4 wählt die nächste Spur in Reaper')
 
+# v8.20: assignable turn functions and zoom toggles
+r7 = Rig(SETUP + """
+reaper.SetExtState('seren_OXI', 't1', 'hzoom', true); reaper.SetExtState('seren_OXI', 't2', 'vscroll', true)
+reaper.SetExtState('seren_OXI', 's1', 'zoomregion', true)""")
+r7.run(5); r7.pad(1, 1)
+c0 = len(r7.g.CMDS)
+r7.knob(1, 1); r7.knob(2, -1)
+new = [r7.g.CMDS[i] for i in range(c0 + 1, len(r7.g.CMDS) + 1)]
+check(1012 in new and 40138 in new, f'Drehen frei belegt: Enc 1 = Zoom horizontal, Enc 2 = Scroll vertikal ({new})')
+c0 = len(r7.g.CMDS); r7.enc_push(1, 'single'); r7.run(20)
+new = [r7.g.CMDS[i] for i in range(c0 + 1, len(r7.g.CMDS) + 1)]
+check(40295 in new, f'Push Zoom Region/Projekt: ohne Region ganzes Projekt ({new})')
+
 # exit
 n0 = len(rig.out())
 rig.g.ATEXIT()

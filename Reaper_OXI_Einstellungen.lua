@@ -12,6 +12,7 @@ local DEFAULTS = {
   pinned = "1", flip = "0", mainSend = "1", tripleVol = "1", seqMute = "1", seqSolo = "1", seqState = "1", statusCol = "0", turnShow = "big", marquee = "1", select = "full", follow = "1", states = "1,2,3,4,5,6,7", sendPush = "mute", preFx = "0", handover = "1", midiReset = "1",
   s1 = "_SWS_TAKESCHANMODE0", s2 = "_SWS_TAKESCHANMODE3", s3 = "normtrack", s4 = "zoomitem",
   d1 = "copyfx", d2 = "copysends", d3 = "", d4 = "",
+  t1 = "", t2 = "", t3 = "", t4 = "",
   l1 = "pastefx", l2 = "replacesends", l3 = "removefx", l4 = "removesends",
 }
 local function get(k) local v = r.GetExtState(EXT, k); return v ~= "" and v or DEFAULTS[k] end
@@ -22,9 +23,13 @@ end
 
 local STATE_NAMES = { "Items (Gain, Fades, Spur)", "Sends 1-4", "Sends 5-8", "Sends 9-12", "Sends 13-16",
   "Item (Position, Pitch, Rate, Länge)", "Spur (Vol, Pan, Breite, Spur)" }
-local BUILTINS = { "", "copyfx", "pastefx", "removefx", "copysends", "replacesends", "removesends", "normtrack", "zoomitem" }
+local BUILTINS = { "", "copyfx", "pastefx", "removefx", "copysends", "replacesends", "removesends", "normtrack", "zoomitem", "zoomitemback", "zoomregion" }
 local BUILTIN_TXT = { "(frei / Reaper-Aktion)", "FX-Kette kopieren", "FX-Kette einfügen", "FX-Kette entfernen",
-  "Sends kopieren", "Sends ersetzen", "Sends entfernen", "Spur normalisieren (BR)", "Zoom auf Item" }
+  "Sends kopieren", "Sends ersetzen", "Sends entfernen", "Spur normalisieren (BR)", "Zoom auf Item",
+  "Zoom Item ↔ zurück (Umschalter)", "Zoom Region ↔ Projekt (Umschalter)" }
+local TURNS = { "", "hscroll", "vscroll", "hzoom", "vzoom", "track" }
+local TURN_TXT = { "Standard (Gain / Fade-in / Fade-out / Spur)", "Scroll horizontal", "Scroll vertikal",
+  "Zoom horizontal", "Zoom vertikal", "Spur ±1 (Shift: nur Ansicht)" }
 
 -- ---------------------------------------------------------------- seren.a look (colours of the TouchOSC surfaces)
 local LOOKS = {
@@ -117,6 +122,14 @@ local function slot(label, key)
   if ch2 then set(key, txt) end
 end
 
+local function turnSlot(e)                       -- v8.20: what turning encoder e does in state Items
+  local key, cur, idx = "t" .. e, get("t" .. e), 0
+  for i, b in ipairs(TURNS) do if b == cur then idx = i - 1 end end
+  r.ImGui_SetNextItemWidth(ctx, 300)
+  local ch, n = r.ImGui_Combo(ctx, "Enc " .. e .. " drehen##turn" .. e, idx, table.concat(TURN_TXT, "\0") .. "\0")
+  if ch then set(key, TURNS[n + 1]) end
+end
+
 local function frame()
   pushTheme(ctx)
   r.ImGui_SetNextWindowSize(ctx, 640, 720, r.ImGui_Cond_FirstUseEver())
@@ -177,6 +190,8 @@ local function frame()
     radio("Push auf Send-Encoder:", "sendPush", { { "mute", "Mute, 2× Pre/Post" }, { "mode", "Pre/Post, 2× Mute" } })
     check("Pre-FX mit durchschalten (Post → Pre-Fader → Pre-FX)", "preFx")
 
+    section(ctx, "Encoder-Drehen im State Items")
+    for e = 1, 4 do turnSlot(e) end
     section(ctx, "Encoder-Push im State Items (eingebaut oder Reaper-Aktions-ID)")
     for e = 1, 4 do slot("Enc " .. e .. " 1×", "s" .. e) end
     for e = 1, 4 do slot("Enc " .. e .. " 2×", "d" .. e) end

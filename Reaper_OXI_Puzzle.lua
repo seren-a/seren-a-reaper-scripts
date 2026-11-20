@@ -2,7 +2,7 @@
 -- Grid: 8 tracks x up to 16 items ("Puzzle"), 4 encoders with switchable states, on-device menu (PAGE),
 -- settings window: Reaper_OXI_Einstellungen.lua (same ExtState). Protocol after DrivenByMoss (OXI One).
 local r = reaper
-local VERSION = "v8.19"
+local VERSION = "v8.20"
 local EXT = "seren_OXI"
 
 ---------------------------------------------------------------------------------------------------
@@ -164,6 +164,7 @@ local DEFAULTS = {
   select = "full",           -- full = select in Reaper + scroll mixer/arrange, sel = only select, oxi = only on the OXI
   follow = "1",              -- a track selected in Reaper scrolls the puzzle to it
   s1 = "_SWS_TAKESCHANMODE0", s2 = "_SWS_TAKESCHANMODE3", s3 = "normtrack", s4 = "zoomitem",
+  t1 = "", t2 = "", t3 = "", t4 = "",   -- v8.20: turning in state Items, "" = standard, else hscroll/vscroll/hzoom/vzoom/track
   d1 = "copyfx", d2 = "copysends", d3 = "", d4 = "",
   l1 = "pastefx", l2 = "replacesends", l3 = "removefx", l4 = "removesends",
   midiReset = "1",           -- v8.18: at start switch the MIDI outputs off and on once (REAPER "Reset all MIDI devices"), if the OXI is connected
@@ -571,6 +572,7 @@ local function forTargets(fn)                  -- selected tracks (OXI-only mode
   return n
 end
 local SEND_KEYS = { "D_VOL", "D_PAN", "B_MUTE", "B_PHASE", "B_MONO", "I_SENDMODE", "I_SRCCHAN", "I_DSTCHAN", "D_PANLAW" }
+local zoomBack, zoomRgn = nil, false     -- state of the zoom toggles
 local BUILTIN = {
   copyfx = function(tr)
     clip.fx = r.GetTrackGUID(tr)
@@ -650,10 +652,41 @@ local BUILTIN = {
     r.GetSet_ArrangeView2(0, true, 0, 0, p - l * 0.1, p + l * 1.1)
     notify("Zoom auf Item")
   end,
+  -- v8.20: zoom toggles (2 states). Item <-> view before, region <-> whole project
+  zoomitemback = function()
+    if zoomBack then
+      r.GetSet_ArrangeView2(0, true, 0, 0, zoomBack[1], zoomBack[2]); zoomBack = nil
+      notify("Zoom zurück"); return
+    end
+    local t = targetItems()
+    if #t == 0 then notify("kein Item"); return end
+    local a, b = r.GetSet_ArrangeView2(0, false, 0, 0)
+    zoomBack = { a, b }
+    local p = r.GetMediaItemInfo_Value(t[1], "D_POSITION")
+    local l = r.GetMediaItemInfo_Value(t[1], "D_LENGTH")
+    r.GetSet_ArrangeView2(0, true, 0, 0, p - l * 0.1, p + l * 1.1)
+    notify("Zoom auf Item")
+  end,
+  zoomregion = function()
+    if zoomRgn then
+      r.Main_OnCommand(40295, 0); zoomRgn = false  -- View: Zoom out project
+      notify("Zoom Projekt"); return
+    end
+    local pos = r.GetCursorPosition()
+    local t = targetItems()
+    if #t > 0 then pos = r.GetMediaItemInfo_Value(t[1], "D_POSITION") + 0.001 end
+    local _, ri = r.GetLastMarkerAndCurRegion(0, pos)
+    if not ri or ri < 0 then r.Main_OnCommand(40295, 0); notify("keine Region: Projekt"); return end
+    local _, _, a, b = r.EnumProjectMarkers3(0, ri)
+    r.GetSet_ArrangeView2(0, true, 0, 0, a, b)
+    zoomRgn = true
+    notify("Zoom Region")
+  end,
 }
 local BUILTIN_NAME = { copyfx = "FX kopieren", pastefx = "FX einfügen", removefx = "FX entfernen",
   copysends = "Sends kop.", replacesends = "Sends ersetzen", removesends = "Sends entf.",
-  normtrack = "Normalisieren", zoomitem = "Zoom Item" }
+  normtrack = "Normalisieren", zoomitem = "Zoom Item", zoomitemback = "Zoom Item/zurück",
+  zoomregion = "Zoom Region/Projekt" }
 local function runSlot(id)
   if not id or id == "" then notify("frei (Einstellungen)"); return end
   local tr = selTrack()
@@ -691,10 +724,33 @@ local function cycleMode(m)
   end
   return m == 0 and 3 or 0
 end
+-- v8.20: freely assignable turn functions (state Items, settings window "Encoder-Drehen")
+local NAV = { hscroll = { "H-Scroll", "Scroll horizontal" }, vscroll = { "V-Scroll", "Scroll vertikal" },
+  hzoom = { "H-Zoom", "Zoom horizontal" }, vzoom = { "V-Zoom", "Zoom vertikal" }, track = { "Spur", "Spur" } }
+local function navTurn(fn, d, acc)
+  local n = (d > 0 and 1 or -1) * acc
+  if fn == "hscroll" then
+    local a, b = r.GetSet_ArrangeView2(0, false, 0, 0)
+    if a and b and b > a then
+      local w = (b - a) * 0.05 * n
+      if a + w < 0 then w = -a end
+      r.GetSet_ArrangeView2(0, true, 0, 0, a + w, b + w)
+    end
+  elseif fn == "vscroll" then
+    for _ = 1, math.abs(n) do r.Main_OnCommand(n > 0 and 40139 or 40138, 0) end   -- View: Scroll view down/up
+  elseif fn == "hzoom" then
+    for _ = 1, math.abs(n) do r.Main_OnCommand(n > 0 and 1012 or 1011, 0) end     -- View: Zoom in/out horizontal
+  elseif fn == "vzoom" then
+    for _ = 1, math.abs(n) do r.Main_OnCommand(n > 0 and 40111 or 40112, 0) end   -- View: Zoom in/out vertical
+  elseif fn == "track" then
+    if shift then view.off = view.off + (d > 0 and 1 or -1); clampView() else stepTrack(d > 0 and 1 or -1) end
+  end
+end
 local function turnRaw(e, d)
   local tr = selTrack()
   local s = sendCtx() and 2 or view.state
   local acc = math.abs(d) > 2 and 4 or 1
+  if s == 1 and NAV[cfg["t" .. e]] then navTurn(cfg["t" .. e], d, acc); return end
   if s == 1 then
     if e == 4 then                               -- v8.19: Enc 4 = previous/next track (Shift = only scroll the grid)
       if shift then view.off = view.off + (d > 0 and 1 or -1); clampView() else stepTrack(d > 0 and 1 or -1) end
@@ -949,7 +1005,8 @@ local function encValues()
     end
     return L, V
   end
-  L = ENC_LABELS[s]
+  L = {}
+  for e = 1, 4 do L[e] = ENC_LABELS[s][e] end
   local its = targetItems()
   local it = its[1]
   if s == 1 then
@@ -957,6 +1014,10 @@ local function encValues()
     V[2] = it and string.format("%dms", math.floor(r.GetMediaItemInfo_Value(it, "D_FADEINLEN") * 1000 + 0.5)) or "-"
     V[3] = it and string.format("%dms", math.floor(r.GetMediaItemInfo_Value(it, "D_FADEOUTLEN") * 1000 + 0.5)) or "-"
     V[4] = trackPos()
+    for e = 1, 4 do                              -- v8.20: assigned turn functions
+      local nv = NAV[cfg["t" .. e]]
+      if nv then L[e] = nv[1]; V[e] = cfg["t" .. e] == "track" and trackPos() or "" end
+    end
   elseif s == 6 then
     local tk = it and r.GetActiveTake(it)
     V[1] = it and string.format("%.2f", r.GetMediaItemInfo_Value(it, "D_POSITION")) or "-"
@@ -1019,7 +1080,9 @@ local function drawDisplay()
   if vf and now - vf.t < 1.5 and cfg.turnShow ~= "off" and not (note ~= "" and noteT > vf.t) then
     local s = sendCtx() and 2 or view.state
     local lab = (LONG[s] and LONG[s][vf.e]) or L[vf.e] or ""
-    local val = (V[vf.e] or "") .. ((UNIT[s] and V[vf.e] ~= "-" and not (V[vf.e] or ""):find("ms")) and UNIT[s][vf.e] or "")
+    if s == 1 and NAV[cfg["t" .. vf.e]] then lab = NAV[cfg["t" .. vf.e]][2] end
+    local nav = s == 1 and NAV[cfg["t" .. vf.e]]
+    local val = (V[vf.e] or "") .. ((not nav and UNIT[s] and V[vf.e] ~= "-" and not (V[vf.e] or ""):find("ms")) and UNIT[s][vf.e] or "")
     if s == 2 then val = V[vf.e] or "" end
     if cfg.turnShow == "big" or cfg.turnShow == "both" then
       for y = 0, 30 do for x = 0, 127 do FB[y * 128 + x] = false end end
